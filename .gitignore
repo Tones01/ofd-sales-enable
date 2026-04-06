@@ -1,3 +1,8 @@
+# Next.js
+.next/
+next-env.d.ts
+package-lock.json
+
 # Supabase
 .branches
 .temp
