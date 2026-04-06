@@ -20,16 +20,11 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Security helper: returns the calling user's role from profiles
--- SECURITY DEFINER so it can read profiles even under restrictive RLS
-CREATE OR REPLACE FUNCTION get_my_role()
-RETURNS TEXT AS $$
-  SELECT role FROM public.profiles WHERE id = auth.uid()
-$$ LANGUAGE sql SECURITY DEFINER STABLE;
-
 -- ---------------------------------------------------------------------------
 -- PROFILES  (extends auth.users with a role field)
 -- ---------------------------------------------------------------------------
+-- NOTE: profiles is created before get_my_role() so PG15 can validate the
+-- function body against the table at definition time.
 
 CREATE TABLE public.profiles (
   id          UUID        PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -42,6 +37,13 @@ CREATE TABLE public.profiles (
 CREATE TRIGGER profiles_updated_at
   BEFORE UPDATE ON public.profiles
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- Security helper: returns the calling user's role.
+-- Defined here (after profiles exists) so PG15 can validate the body.
+CREATE OR REPLACE FUNCTION get_my_role()
+RETURNS TEXT AS $$
+  SELECT role FROM public.profiles WHERE id = auth.uid()
+$$ LANGUAGE sql SECURITY DEFINER STABLE;
 
 -- Auto-create a profile row whenever a new auth user is created.
 -- Role and full_name are read from raw_user_meta_data if provided.
