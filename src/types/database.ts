@@ -13,53 +13,65 @@ export interface Database {
         Row: { id: string; role: Role; full_name: string | null; created_at: string; updated_at: string }
         Insert: { id: string; role?: Role; full_name?: string | null }
         Update: { role?: Role; full_name?: string | null }
+        Relationships: []
       }
       deals: {
         Row: { id: string; lp_name: string; product_name: string; sku: string; credit_description: string; qty_total: number; status: DealStatus; created_at: string; updated_at: string }
-        Insert: Omit<Database["public"]["Tables"]["deals"]["Row"], "id" | "created_at" | "updated_at"> & { id?: string }
-        Update: Partial<Database["public"]["Tables"]["deals"]["Insert"]>
+        Insert: { id?: string; lp_name: string; product_name: string; sku: string; credit_description: string; qty_total: number; status?: DealStatus }
+        Update: { id?: string; lp_name?: string; product_name?: string; sku?: string; credit_description?: string; qty_total?: number; status?: DealStatus }
+        Relationships: []
       }
       sheets: {
         Row: { id: string; name: string; created_by: string; status: SheetStatus; created_at: string; updated_at: string }
-        Insert: Omit<Database["public"]["Tables"]["sheets"]["Row"], "id" | "created_at" | "updated_at"> & { id?: string }
-        Update: Partial<Database["public"]["Tables"]["sheets"]["Insert"]>
+        Insert: { id?: string; name: string; created_by: string; status?: SheetStatus }
+        Update: { id?: string; name?: string; created_by?: string; status?: SheetStatus }
+        Relationships: []
       }
       sheet_deals: {
         Row: { id: string; sheet_id: string; deal_id: string; visible_qty: number; created_at: string }
-        Insert: Omit<Database["public"]["Tables"]["sheet_deals"]["Row"], "id" | "created_at"> & { id?: string }
-        Update: Partial<Database["public"]["Tables"]["sheet_deals"]["Insert"]>
+        Insert: { id?: string; sheet_id: string; deal_id: string; visible_qty: number }
+        Update: { id?: string; sheet_id?: string; deal_id?: string; visible_qty?: number }
+        Relationships: []
       }
       sheet_retailers: {
         Row: { id: string; sheet_id: string; deal_id: string; retailer_id: string | null; retailer_name: string; alloc_qty: number; status: AllocationStatus; ship_instructions: string | null; responded_at: string | null; created_at: string; updated_at: string }
-        Insert: Omit<Database["public"]["Tables"]["sheet_retailers"]["Row"], "id" | "created_at" | "updated_at"> & { id?: string }
-        Update: Partial<Database["public"]["Tables"]["sheet_retailers"]["Insert"]>
+        Insert: { id?: string; sheet_id: string; deal_id: string; retailer_id?: string | null; retailer_name: string; alloc_qty: number; status?: AllocationStatus; ship_instructions?: string | null; responded_at?: string | null }
+        Update: { id?: string; sheet_id?: string; deal_id?: string; retailer_id?: string | null; retailer_name?: string; alloc_qty?: number; status?: AllocationStatus; ship_instructions?: string | null; responded_at?: string | null }
+        Relationships: []
       }
       retailers: {
         Row: { id: string; name: string; license_number: string | null; address: string | null; city: string | null; province: string | null; postal_code: string | null; contact_name: string | null; contact_email: string | null; contact_phone: string | null; account_rep_id: string | null; status: RetailerStatus; notes: string | null; created_at: string; updated_at: string }
-        Insert: Omit<Database["public"]["Tables"]["retailers"]["Row"], "id" | "created_at" | "updated_at"> & { id?: string }
-        Update: Partial<Database["public"]["Tables"]["retailers"]["Insert"]>
+        Insert: { id?: string; name: string; license_number?: string | null; address?: string | null; city?: string | null; province?: string | null; postal_code?: string | null; contact_name?: string | null; contact_email?: string | null; contact_phone?: string | null; account_rep_id?: string | null; status?: RetailerStatus; notes?: string | null }
+        Update: { id?: string; name?: string; license_number?: string | null; address?: string | null; city?: string | null; province?: string | null; postal_code?: string | null; contact_name?: string | null; contact_email?: string | null; contact_phone?: string | null; account_rep_id?: string | null; status?: RetailerStatus; notes?: string | null }
+        Relationships: []
       }
       promotions: {
         Row: { id: string; partner_name: string; lp_name: string; mechanism_description: string; start_date: string; end_date: string | null; units_sold: number; notes: string | null; created_at: string; updated_at: string }
-        Insert: Omit<Database["public"]["Tables"]["promotions"]["Row"], "id" | "created_at" | "updated_at"> & { id?: string }
-        Update: Partial<Database["public"]["Tables"]["promotions"]["Insert"]>
+        Insert: { id?: string; partner_name: string; lp_name: string; mechanism_description: string; start_date: string; end_date?: string | null; units_sold?: number; notes?: string | null }
+        Update: { id?: string; partner_name?: string; lp_name?: string; mechanism_description?: string; start_date?: string; end_date?: string | null; units_sold?: number; notes?: string | null }
+        Relationships: []
       }
     }
     Views: {
       deal_availability: {
         Row: { id: string; lp_name: string; product_name: string; sku: string; credit_description: string; status: DealStatus; qty_total: number; qty_reserved: number; qty_accepted: number; qty_fulfilled: number; qty_allocated: number; qty_available: number; created_at: string; updated_at: string }
+        Relationships: []
       }
       rep_stats: {
         Row: { rep_id: string; full_name: string | null; sheets_total: number; sheets_sent: number; sheets_archived: number; allocations_total: number; allocations_pending: number; allocations_accepted: number; allocations_rejected: number; allocations_fulfilled: number; units_accepted: number; units_fulfilled: number; acceptance_rate_pct: number | null }
+        Relationships: []
       }
       retailer_stats: {
         Row: { id: string; name: string; city: string | null; province: string | null; account_rep_id: string | null; account_rep_name: string | null; allocations_total: number; allocations_accepted: number; allocations_rejected: number; allocations_fulfilled: number; units_committed: number; units_fulfilled: number; acceptance_rate_pct: number | null; last_response_at: string | null }
+        Relationships: []
       }
       retailer_purchase_history: {
         Row: { retailer_id: string; retailer_name: string; city: string | null; province: string | null; allocation_id: string; sheet_id: string; sheet_name: string; lp_name: string; product_name: string; sku: string; credit_description: string; alloc_qty: number; status: AllocationStatus; ship_instructions: string | null; responded_at: string | null; rep_name: string | null; created_at: string }
+        Relationships: []
       }
       lp_deal_stats: {
         Row: { lp_name: string; deals_total: number; deals_active: number; units_total: number; units_reserved: number; units_accepted: number; units_fulfilled: number; units_rejected: number }
+        Relationships: []
       }
     }
     Functions: {
@@ -69,10 +81,11 @@ export interface Database {
       fulfill_inventory: { Args: { p_sheet_retailer_id: string }; Returns: void }
       get_my_role: { Args: Record<never, never>; Returns: string }
     }
+    Enums: {}
+    CompositeTypes: {}
   }
 }
 
-// Convenience row types
 export type Profile = Database["public"]["Tables"]["profiles"]["Row"]
 export type Deal = Database["public"]["Tables"]["deals"]["Row"]
 export type Sheet = Database["public"]["Tables"]["sheets"]["Row"]
