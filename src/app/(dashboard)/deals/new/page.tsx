@@ -22,7 +22,7 @@ function Field({ label, required, hint, children }: { label: string; required?: 
 function parseCSV(text: string): Record<string, string>[] {
   const lines = text.trim().split(/\r?\n/)
   if (lines.length < 2) return []
-  const headers = lines[0].split(",").map(h => h.trim().toLowerCase().replace(/"/g, ""))
+  const headers = lines[0].split(",").map(h => h.trim().toLowerCase().replace(/"/g, "").replace(/\s+/g, "_"))
   return lines.slice(1).filter(l => l.trim()).map(line => {
     const values: string[] = []
     let cur = "", inQ = false
@@ -46,8 +46,9 @@ export default function NewDealPage() {
 
   // Manual form
   const [form, setForm] = useState({
-    lp_name: "", product_name: "", sku: "", credit_description: "",
-    qty_total: "", category: "", list_price: "", deal_expiry: "", notes: "",
+    lp_name: "", brand: "", product_name: "", format: "",
+    sku: "", case_qty: "", regular_price: "", sale_price: "",
+    deal_expiry: "", credit_description: "", notes: "",
   })
   function set(field: keyof typeof form, value: string) {
     setForm(f => ({ ...f, [field]: value }))
@@ -78,13 +79,15 @@ export default function NewDealPage() {
     const supabase = createClient()
     const { error } = await supabase.from("deals").insert({
       lp_name: form.lp_name,
+      brand: form.brand || null,
       product_name: form.product_name,
+      format: form.format || null,
       sku: form.sku,
-      credit_description: form.credit_description,
-      qty_total: parseInt(form.qty_total, 10),
-      category: form.category || null,
-      list_price: form.list_price ? parseFloat(form.list_price) : null,
+      qty_total: parseInt(form.case_qty, 10),
+      list_price: form.regular_price ? parseFloat(form.regular_price) : null,
+      sale_price: form.sale_price ? parseFloat(form.sale_price) : null,
       deal_expiry: form.deal_expiry || null,
+      credit_description: form.credit_description || null,
       notes: form.notes || null,
       status: "active",
     })
@@ -105,18 +108,24 @@ export default function NewDealPage() {
 
     rows.forEach((row, i) => {
       const rowNum = i + 2
-      if (!row["lp_name"]) { errs.push({ row: rowNum, error: "lp_name is required" }); return }
+      if (!row["lp_name"] && !row["licensed_producer"]) { errs.push({ row: rowNum, error: "lp_name / licensed_producer is required" }); return }
       if (!row["product_name"]) { errs.push({ row: rowNum, error: "product_name is required" }); return }
       if (!row["sku"]) { errs.push({ row: rowNum, error: "sku is required" }); return }
-      if (!row["credit_description"]) { errs.push({ row: rowNum, error: "credit_description is required" }); return }
-      const qty = parseInt(row["qty_total"], 10)
-      if (isNaN(qty) || qty <= 0) { errs.push({ row: rowNum, error: `Invalid qty_total: "${row["qty_total"]}"` }); return }
+      const rawQty = row["case_qty"] || row["qty_total"] || ""
+      const qty = parseInt(rawQty, 10)
+      if (isNaN(qty) || qty <= 0) { errs.push({ row: rowNum, error: `Invalid case_qty: "${rawQty}"` }); return }
       deals.push({
-        lp_name: row["lp_name"],
+        lp_name: row["lp_name"] || row["licensed_producer"],
+        brand: row["brand"] || null,
         product_name: row["product_name"],
+        format: row["format"] || null,
         sku: row["sku"],
-        credit_description: row["credit_description"],
         qty_total: qty,
+        list_price: row["regular_price"] ? parseFloat(row["regular_price"]) : null,
+        sale_price: row["sale_price"] ? parseFloat(row["sale_price"]) : null,
+        deal_expiry: row["expiry_date"] || row["deal_expiry"] || null,
+        credit_description: row["credit_description"] || null,
+        notes: row["notes"] || null,
         status: row["status"] === "closed" ? "closed" : "active",
       })
     })
@@ -172,49 +181,45 @@ export default function NewDealPage() {
       {tab === "manual" ? (
         <form onSubmit={handleManualSubmit} className="space-y-5">
           <div className="grid grid-cols-2 gap-4">
-            <Field label="LP name" required>
+            <Field label="Licensed producer" required>
               <input className={input} value={form.lp_name} onChange={e => set("lp_name", e.target.value)} placeholder="e.g. Auxly Cannabis" required />
             </Field>
-            <Field label="Category">
-              <select className={input} value={form.category} onChange={e => set("category", e.target.value)}>
-                <option value="">Select…</option>
-                <option>Flower</option>
-                <option>Pre-roll</option>
-                <option>Vape</option>
-                <option>Edible</option>
-                <option>Concentrate</option>
-                <option>Capsule</option>
-                <option>Tincture</option>
-                <option>Topical</option>
-                <option>Accessory</option>
-              </select>
+            <Field label="Brand">
+              <input className={input} value={form.brand} onChange={e => set("brand", e.target.value)} placeholder="e.g. Kolab Project" />
             </Field>
           </div>
 
           <Field label="Product name" required>
-            <input className={input} value={form.product_name} onChange={e => set("product_name", e.target.value)} placeholder="e.g. Kolab Project 28g Indica" required />
+            <input className={input} value={form.product_name} onChange={e => set("product_name", e.target.value)} placeholder="e.g. Kolab Project Indica" required />
           </Field>
 
           <div className="grid grid-cols-2 gap-4">
+            <Field label="Format">
+              <input className={input} value={form.format} onChange={e => set("format", e.target.value)} placeholder="e.g. 28g Flower" />
+            </Field>
             <Field label="SKU" required>
               <input className={input} value={form.sku} onChange={e => set("sku", e.target.value)} placeholder="e.g. AUX-KLP-28-IND" required />
             </Field>
-            <Field label="Total units" required>
-              <input className={input} type="number" min="1" value={form.qty_total} onChange={e => set("qty_total", e.target.value)} placeholder="500" required />
+          </div>
+
+          <div className="grid grid-cols-3 gap-4">
+            <Field label="Case qty" required hint="Orders placed in cases">
+              <input className={input} type="number" min="1" value={form.case_qty} onChange={e => set("case_qty", e.target.value)} placeholder="12" required />
+            </Field>
+            <Field label="Regular price ($)">
+              <input className={input} type="number" step="0.01" min="0" value={form.regular_price} onChange={e => set("regular_price", e.target.value)} placeholder="0.00" />
+            </Field>
+            <Field label="Sale price ($)">
+              <input className={input} type="number" step="0.01" min="0" value={form.sale_price} onChange={e => set("sale_price", e.target.value)} placeholder="0.00" />
             </Field>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="List price ($)" hint="Optional — for reference">
-              <input className={input} type="number" step="0.01" min="0" value={form.list_price} onChange={e => set("list_price", e.target.value)} placeholder="0.00" />
-            </Field>
-            <Field label="Deal expiry" hint="Optional">
-              <input className={input} type="date" value={form.deal_expiry} onChange={e => set("deal_expiry", e.target.value)} />
-            </Field>
-          </div>
+          <Field label="Expiry date">
+            <input className={input} type="date" value={form.deal_expiry} onChange={e => set("deal_expiry", e.target.value)} />
+          </Field>
 
-          <Field label="Credit / markdown description" required>
-            <textarea className={`${input} resize-none`} rows={3} value={form.credit_description} onChange={e => set("credit_description", e.target.value)} placeholder="e.g. $2.00/unit markdown on 90-day aged inventory" required />
+          <Field label="Credit / markdown description" hint="Optional — e.g. $2.00/unit markdown on 90-day aged inventory">
+            <textarea className={`${input} resize-none`} rows={2} value={form.credit_description} onChange={e => set("credit_description", e.target.value)} placeholder="e.g. $2.00/unit markdown on 90-day aged inventory" />
           </Field>
 
           <Field label="Internal notes">
@@ -232,13 +237,15 @@ export default function NewDealPage() {
         </form>
       ) : (
         <form onSubmit={handleCsvSubmit} className="space-y-6">
-          {/* Template download hint */}
+          {/* Template hint */}
           <div className="bg-zinc-50 border border-zinc-100 rounded-xl p-4 text-sm text-zinc-500">
             <p className="font-medium text-zinc-700 mb-1">Required CSV columns:</p>
             <code className="text-xs bg-white border border-zinc-100 rounded px-2 py-1 block mt-1">
-              lp_name, product_name, sku, credit_description, qty_total
+              lp_name, product_name, sku, case_qty
             </code>
-            <p className="mt-2 text-xs">Optional: <code>status</code> (active / closed)</p>
+            <p className="mt-2 text-xs">
+              Optional: <code>brand</code>, <code>format</code>, <code>regular_price</code>, <code>sale_price</code>, <code>expiry_date</code>, <code>credit_description</code>, <code>notes</code>, <code>status</code>
+            </p>
           </div>
 
           {/* File upload */}
@@ -258,7 +265,7 @@ export default function NewDealPage() {
               rows={6}
               value={csvText}
               onChange={e => { setCsvText(e.target.value); setCsvPreview(parseCSV(e.target.value).slice(0, 5)) }}
-              placeholder={"lp_name,product_name,sku,credit_description,qty_total\nAuxly Cannabis,Kolab 28g Indica,AUX-KLP-28-IND,$2/unit markdown,500"}
+              placeholder={"lp_name,brand,product_name,format,sku,case_qty,regular_price,sale_price,expiry_date\nAuxly Cannabis,Kolab Project,Kolab Indica,28g Flower,AUX-KLP-28-IND,12,19.99,14.99,2026-12-31"}
             />
           </Field>
 

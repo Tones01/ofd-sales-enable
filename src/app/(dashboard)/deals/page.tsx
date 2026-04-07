@@ -36,11 +36,13 @@ export default async function DealsPage() {
           <thead>
             <tr className="border-b border-zinc-100">
               <th className="text-left text-xs text-zinc-400 font-medium px-5 py-3.5">Product</th>
-              <th className="text-left text-xs text-zinc-400 font-medium px-5 py-3.5 hidden lg:table-cell">Credit</th>
-              <th className="text-right text-xs text-zinc-400 font-medium px-5 py-3.5">Total</th>
+              <th className="text-left text-xs text-zinc-400 font-medium px-5 py-3.5 hidden lg:table-cell">Format</th>
+              <th className="text-right text-xs text-zinc-400 font-medium px-5 py-3.5 hidden xl:table-cell">Reg.</th>
+              <th className="text-right text-xs text-zinc-400 font-medium px-5 py-3.5 hidden xl:table-cell">Sale</th>
+              <th className="text-right text-xs text-zinc-400 font-medium px-5 py-3.5">Cases</th>
               <th className="text-right text-xs text-zinc-400 font-medium px-5 py-3.5">Reserved</th>
-              <th className="text-right text-xs text-zinc-400 font-medium px-5 py-3.5">Accepted</th>
               <th className="text-right text-xs text-zinc-400 font-medium px-5 py-3.5">Available</th>
+              <th className="text-center text-xs text-zinc-400 font-medium px-5 py-3.5">Expiry</th>
               <th className="text-center text-xs text-zinc-400 font-medium px-5 py-3.5">Status</th>
             </tr>
           </thead>
@@ -51,12 +53,17 @@ export default async function DealsPage() {
                   <p className="font-medium text-zinc-900">{deal.product_name}</p>
                   <p className="text-xs text-zinc-400 mt-0.5">{deal.lp_name} · {deal.sku}</p>
                 </td>
-                <td className="px-5 py-4 text-zinc-500 hidden lg:table-cell max-w-[220px]">
-                  <span className="line-clamp-1">{deal.credit_description}</span>
+                <td className="px-5 py-4 text-zinc-500 text-sm hidden lg:table-cell">{(deal as any).format ?? "—"}</td>
+                <td className="px-5 py-4 text-right text-zinc-500 hidden xl:table-cell">
+                  {(deal as any).list_price != null ? `$${Number((deal as any).list_price).toFixed(2)}` : "—"}
+                </td>
+                <td className="px-5 py-4 text-right hidden xl:table-cell">
+                  {(deal as any).sale_price != null
+                    ? <span className="text-emerald-600 font-medium">${Number((deal as any).sale_price).toFixed(2)}</span>
+                    : <span className="text-zinc-400">—</span>}
                 </td>
                 <td className="px-5 py-4 text-right text-zinc-500">{deal.qty_total.toLocaleString()}</td>
                 <td className="px-5 py-4 text-right text-zinc-500">{deal.qty_reserved.toLocaleString()}</td>
-                <td className="px-5 py-4 text-right text-zinc-500">{deal.qty_accepted.toLocaleString()}</td>
                 <td className="px-5 py-4 text-right">
                   <span className={`font-semibold ${
                     deal.qty_available <= 0
@@ -67,6 +74,9 @@ export default async function DealsPage() {
                   }`}>
                     {deal.qty_available.toLocaleString()}
                   </span>
+                </td>
+                <td className="px-5 py-4 text-center text-xs text-zinc-400">
+                  {(deal as any).deal_expiry ?? "—"}
                 </td>
                 <td className="px-5 py-4 text-center">
                   <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
