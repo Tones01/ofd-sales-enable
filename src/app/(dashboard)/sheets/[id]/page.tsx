@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
 import { notFound } from "next/navigation"
+import { headers } from "next/headers"
 import Link from "next/link"
 import { ArrowLeft, Copy } from "lucide-react"
 import SheetBuilder from "@/components/sheets/SheetBuilder"
@@ -22,7 +23,11 @@ export default async function SheetDetailPage({ params }: { params: { id: string
     supabase.from("sheet_retailers").select("id, retailer_id, retailer_name, alloc_qty, status, requested_ship_date, retailers(name)").eq("sheet_id", params.id),
   ])
 
-  const orderUrl = `${process.env.NEXT_PUBLIC_SITE_URL ?? ""}/order/${params.id}`
+  const headersList = headers()
+  const host = headersList.get("host") ?? "localhost:3000"
+  const protocol = host.startsWith("localhost") ? "http" : "https"
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? `${protocol}://${host}`
+  const orderUrl = `${siteUrl}/order/${params.id}`
 
   return (
     <div className="px-8 py-8 max-w-5xl mx-auto">

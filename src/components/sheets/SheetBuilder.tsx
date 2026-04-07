@@ -134,7 +134,10 @@ export default function SheetBuilder({
   }
 
   function copyLink() {
-    navigator.clipboard.writeText(orderUrl)
+    const url = orderUrl.startsWith("http")
+      ? orderUrl
+      : `${window.location.origin}${orderUrl}`
+    navigator.clipboard.writeText(url)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
