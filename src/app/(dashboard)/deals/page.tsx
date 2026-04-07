@@ -71,9 +71,6 @@ export default async function DealsPage() {
                 </td>
                 <td className="px-5 py-4 text-zinc-500 text-sm hidden lg:table-cell">{(deal as any).format ?? "—"}</td>
                 <td className="px-5 py-4 text-zinc-500 text-sm hidden xl:table-cell">{(deal as any).thc ?? "—"}</td>
-                <td className="px-5 py-4 text-right text-zinc-500 tabular-nums hidden lg:table-cell">
-                  {(deal as any).units_per_case != null ? (deal as any).units_per_case : "—"}
-                </td>
                 <td className="px-5 py-4 text-right text-zinc-500 hidden xl:table-cell">
                   {(deal as any).list_price != null ? `$${Number((deal as any).list_price).toFixed(2)}` : "—"}
                 </td>
@@ -81,6 +78,9 @@ export default async function DealsPage() {
                   {(deal as any).sale_price != null
                     ? <span className="text-emerald-600 font-medium">${Number((deal as any).sale_price).toFixed(2)}</span>
                     : <span className="text-zinc-400">—</span>}
+                </td>
+                <td className="px-5 py-4 text-right text-zinc-500 tabular-nums hidden lg:table-cell">
+                  {(deal as any).units_per_case != null ? (deal as any).units_per_case : "—"}
                 </td>
                 <td className="px-5 py-4 text-right text-zinc-500 tabular-nums">{deal.qty_total.toLocaleString()}</td>
                 <td className="px-5 py-4 text-right text-zinc-500 tabular-nums">{deal.qty_reserved.toLocaleString()}</td>
