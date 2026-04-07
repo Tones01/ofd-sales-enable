@@ -36,36 +36,28 @@ export default function OrderForm({ sheet, sheetDeals, retailers }: {
 
     if (!name.trim()) { setError("Please select or enter your store name."); return }
 
-    const orderLines = sheetDeals
+    const lines = sheetDeals
       .filter(sd => parseInt(qtys[sd.id] ?? "0", 10) > 0)
       .map(sd => ({
-        sheet_id: sheet.id,
-        deal_id: sd.deal_id ?? (sd.deals as any)?.id,
-        retailer_id: retailerId || null,
-        retailer_name: name,
+        deal_id: sd.deal_id,
         alloc_qty: parseInt(qtys[sd.id], 10),
-        status: "pending",
-        requested_ship_date: requestedShipDate || null,
-        retailer_notes: notes || null,
       }))
 
-    if (!orderLines.length) { setError("Please enter a quantity for at least one product."); return }
+    if (!lines.length) { setError("Please enter a quantity for at least one product."); return }
 
     setSubmitting(true)
     const supabase = createClient()
 
-    // Remove any existing pending entries for this retailer on this sheet, then insert fresh
-    if (retailerId) {
-      await supabase.from("sheet_retailers")
-        .delete()
-        .eq("sheet_id", sheet.id)
-        .eq("retailer_id", retailerId)
-        .eq("status", "pending")
-    }
+    const { error: rpcError } = await supabase.rpc("submit_order", {
+      p_sheet_id:            sheet.id,
+      p_retailer_id:         (retailerId && retailerId !== "other") ? retailerId : null,
+      p_retailer_name:       name,
+      p_requested_ship_date: requestedShipDate || null,
+      p_retailer_notes:      notes || null,
+      p_lines:               lines,
+    })
 
-    const { error: insertError } = await supabase.from("sheet_retailers").insert(orderLines)
-
-    if (insertError) { setError(insertError.message); setSubmitting(false) }
+    if (rpcError) { setError(rpcError.message); setSubmitting(false) }
     else { setSubmitted(true) }
   }
 
