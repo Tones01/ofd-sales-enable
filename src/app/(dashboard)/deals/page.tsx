@@ -37,6 +37,7 @@ export default async function DealsPage() {
             <tr className="border-b border-zinc-100">
               <th className="text-left text-xs text-zinc-400 font-medium px-5 py-3.5">Product</th>
               <th className="text-left text-xs text-zinc-400 font-medium px-5 py-3.5 hidden lg:table-cell">Format</th>
+              <th className="text-left text-xs text-zinc-400 font-medium px-5 py-3.5 hidden xl:table-cell">THC</th>
               <th className="text-right text-xs text-zinc-400 font-medium px-5 py-3.5 hidden xl:table-cell">Reg.</th>
               <th className="text-right text-xs text-zinc-400 font-medium px-5 py-3.5 hidden xl:table-cell">Sale</th>
               <th className="text-right text-xs text-zinc-400 font-medium px-5 py-3.5">Cases</th>
@@ -54,6 +55,7 @@ export default async function DealsPage() {
                   <p className="text-xs text-zinc-400 mt-0.5">{deal.lp_name} · {deal.sku}</p>
                 </td>
                 <td className="px-5 py-4 text-zinc-500 text-sm hidden lg:table-cell">{(deal as any).format ?? "—"}</td>
+                <td className="px-5 py-4 text-zinc-500 text-sm hidden xl:table-cell">{(deal as any).thc ?? "—"}</td>
                 <td className="px-5 py-4 text-right text-zinc-500 hidden xl:table-cell">
                   {(deal as any).list_price != null ? `$${Number((deal as any).list_price).toFixed(2)}` : "—"}
                 </td>

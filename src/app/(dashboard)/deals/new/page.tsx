@@ -3,9 +3,34 @@
 import { useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import Link from "next/link"
-import { ArrowLeft, Upload, FileText } from "lucide-react"
+import { ArrowLeft, Upload, FileText, Download } from "lucide-react"
 
 const input = "w-full px-3.5 py-2.5 text-sm bg-white border border-zinc-200 rounded-lg text-zinc-900 placeholder:text-zinc-300 focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent transition"
+
+const CSV_HEADERS = [
+  "lp_name", "brand", "product_name", "format", "sku",
+  "case_qty", "regular_price", "sale_price", "thc", "minor_cannabinoids",
+  "expiry_date", "credit_description", "notes",
+]
+
+const CSV_EXAMPLE_ROW = [
+  "Auxly Cannabis", "Kolab Project", "Kolab Project Indica", "28g Flower",
+  "AUX-KLP-28-IND", "12", "19.99", "14.99", "22%", "CBD 0.5% | CBG 1%",
+  "2026-12-31", "$2/unit markdown", "",
+]
+
+function downloadTemplate() {
+  const header = CSV_HEADERS.join(",")
+  const example = CSV_EXAMPLE_ROW.map(v => v.includes(",") ? `"${v}"` : v).join(",")
+  const csv = `${header}\n${example}\n`
+  const blob = new Blob([csv], { type: "text/csv" })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement("a")
+  a.href = url
+  a.download = "deals-import-template.csv"
+  a.click()
+  URL.revokeObjectURL(url)
+}
 
 function Field({ label, required, hint, children }: { label: string; required?: boolean; hint?: string; children: React.ReactNode }) {
   return (
@@ -44,17 +69,16 @@ export default function NewDealPage() {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
 
-  // Manual form
   const [form, setForm] = useState({
     lp_name: "", brand: "", product_name: "", format: "",
     sku: "", case_qty: "", regular_price: "", sale_price: "",
+    thc: "", minor_cannabinoids: "",
     deal_expiry: "", credit_description: "", notes: "",
   })
   function set(field: keyof typeof form, value: string) {
     setForm(f => ({ ...f, [field]: value }))
   }
 
-  // CSV
   const [csvText, setCsvText] = useState("")
   const [csvPreview, setCsvPreview] = useState<Record<string, string>[]>([])
   const [csvErrors, setCsvErrors] = useState<{ row: number; error: string }[]>([])
@@ -66,8 +90,7 @@ export default function NewDealPage() {
     reader.onload = (ev) => {
       const text = ev.target?.result as string
       setCsvText(text)
-      const rows = parseCSV(text)
-      setCsvPreview(rows.slice(0, 5))
+      setCsvPreview(parseCSV(text).slice(0, 5))
     }
     reader.readAsText(file)
   }
@@ -86,6 +109,8 @@ export default function NewDealPage() {
       qty_total: parseInt(form.case_qty, 10),
       list_price: form.regular_price ? parseFloat(form.regular_price) : null,
       sale_price: form.sale_price ? parseFloat(form.sale_price) : null,
+      thc: form.thc || null,
+      minor_cannabinoids: form.minor_cannabinoids || null,
       deal_expiry: form.deal_expiry || null,
       credit_description: form.credit_description || null,
       notes: form.notes || null,
@@ -108,7 +133,7 @@ export default function NewDealPage() {
 
     rows.forEach((row, i) => {
       const rowNum = i + 2
-      if (!row["lp_name"] && !row["licensed_producer"]) { errs.push({ row: rowNum, error: "lp_name / licensed_producer is required" }); return }
+      if (!row["lp_name"] && !row["licensed_producer"]) { errs.push({ row: rowNum, error: "lp_name is required" }); return }
       if (!row["product_name"]) { errs.push({ row: rowNum, error: "product_name is required" }); return }
       if (!row["sku"]) { errs.push({ row: rowNum, error: "sku is required" }); return }
       const rawQty = row["case_qty"] || row["qty_total"] || ""
@@ -123,6 +148,8 @@ export default function NewDealPage() {
         qty_total: qty,
         list_price: row["regular_price"] ? parseFloat(row["regular_price"]) : null,
         sale_price: row["sale_price"] ? parseFloat(row["sale_price"]) : null,
+        thc: row["thc"] || null,
+        minor_cannabinoids: row["minor_cannabinoids"] || null,
         deal_expiry: row["expiry_date"] || row["deal_expiry"] || null,
         credit_description: row["credit_description"] || null,
         notes: row["notes"] || null,
@@ -156,7 +183,6 @@ export default function NewDealPage() {
 
       <h1 className="font-serif text-2xl text-zinc-900 mb-6">Add deals</h1>
 
-      {/* Tabs */}
       <div className="flex gap-1 bg-zinc-100 p-1 rounded-lg w-fit mb-8">
         {(["manual", "csv"] as const).map(t => (
           <button
@@ -214,11 +240,20 @@ export default function NewDealPage() {
             </Field>
           </div>
 
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="THC" hint="e.g. 22% or 18–24%">
+              <input className={input} value={form.thc} onChange={e => set("thc", e.target.value)} placeholder="e.g. 22%" />
+            </Field>
+            <Field label="Minor cannabinoids" hint="e.g. CBD 0.5% | CBG 1%">
+              <input className={input} value={form.minor_cannabinoids} onChange={e => set("minor_cannabinoids", e.target.value)} placeholder="e.g. CBD 0.5% | CBG 1%" />
+            </Field>
+          </div>
+
           <Field label="Expiry date">
             <input className={input} type="date" value={form.deal_expiry} onChange={e => set("deal_expiry", e.target.value)} />
           </Field>
 
-          <Field label="Credit / markdown description" hint="Optional — e.g. $2.00/unit markdown on 90-day aged inventory">
+          <Field label="Credit / markdown description" hint="Optional">
             <textarea className={`${input} resize-none`} rows={2} value={form.credit_description} onChange={e => set("credit_description", e.target.value)} placeholder="e.g. $2.00/unit markdown on 90-day aged inventory" />
           </Field>
 
@@ -237,18 +272,29 @@ export default function NewDealPage() {
         </form>
       ) : (
         <form onSubmit={handleCsvSubmit} className="space-y-6">
-          {/* Template hint */}
+          {/* Template info + download */}
           <div className="bg-zinc-50 border border-zinc-100 rounded-xl p-4 text-sm text-zinc-500">
-            <p className="font-medium text-zinc-700 mb-1">Required CSV columns:</p>
-            <code className="text-xs bg-white border border-zinc-100 rounded px-2 py-1 block mt-1">
-              lp_name, product_name, sku, case_qty
-            </code>
-            <p className="mt-2 text-xs">
-              Optional: <code>brand</code>, <code>format</code>, <code>regular_price</code>, <code>sale_price</code>, <code>expiry_date</code>, <code>credit_description</code>, <code>notes</code>, <code>status</code>
-            </p>
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <p className="font-medium text-zinc-700 mb-1">Required columns:</p>
+                <code className="text-xs bg-white border border-zinc-100 rounded px-2 py-1 block mt-1 break-all">
+                  lp_name, product_name, sku, case_qty
+                </code>
+                <p className="mt-2 text-xs">
+                  Optional: <code>brand</code>, <code>format</code>, <code>regular_price</code>, <code>sale_price</code>, <code>thc</code>, <code>minor_cannabinoids</code>, <code>expiry_date</code>, <code>credit_description</code>, <code>notes</code>
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={downloadTemplate}
+                className="flex-shrink-0 flex items-center gap-1.5 text-xs font-medium text-zinc-600 bg-white border border-zinc-200 px-3 py-2 rounded-lg hover:bg-zinc-50 transition-colors whitespace-nowrap"
+              >
+                <Download size={12} />
+                Download template
+              </button>
+            </div>
           </div>
 
-          {/* File upload */}
           <Field label="Upload CSV file">
             <label className="flex items-center justify-center gap-3 w-full h-28 border-2 border-dashed border-zinc-200 rounded-xl cursor-pointer hover:border-zinc-400 hover:bg-zinc-50 transition-colors">
               <Upload size={18} className="text-zinc-400" />
@@ -265,11 +311,10 @@ export default function NewDealPage() {
               rows={6}
               value={csvText}
               onChange={e => { setCsvText(e.target.value); setCsvPreview(parseCSV(e.target.value).slice(0, 5)) }}
-              placeholder={"lp_name,brand,product_name,format,sku,case_qty,regular_price,sale_price,expiry_date\nAuxly Cannabis,Kolab Project,Kolab Indica,28g Flower,AUX-KLP-28-IND,12,19.99,14.99,2026-12-31"}
+              placeholder={"lp_name,brand,product_name,format,sku,case_qty,regular_price,sale_price,thc,minor_cannabinoids,expiry_date\nAuxly Cannabis,Kolab Project,Kolab Indica,28g Flower,AUX-KLP-28-IND,12,19.99,14.99,22%,CBD 0.5%,2026-12-31"}
             />
           </Field>
 
-          {/* Preview */}
           {csvPreview.length > 0 && (
             <div>
               <p className="text-xs text-zinc-400 mb-2">{parseCSV(csvText).length} rows detected — showing first {csvPreview.length}</p>
@@ -278,7 +323,7 @@ export default function NewDealPage() {
                   <thead>
                     <tr className="border-b border-zinc-100 bg-zinc-50">
                       {Object.keys(csvPreview[0]).map(h => (
-                        <th key={h} className="text-left text-zinc-500 font-medium px-3 py-2">{h}</th>
+                        <th key={h} className="text-left text-zinc-500 font-medium px-3 py-2 whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -286,7 +331,7 @@ export default function NewDealPage() {
                     {csvPreview.map((row, i) => (
                       <tr key={i}>
                         {Object.values(row).map((v, j) => (
-                          <td key={j} className="px-3 py-2 text-zinc-600 max-w-[160px] truncate">{v}</td>
+                          <td key={j} className="px-3 py-2 text-zinc-600 max-w-[140px] truncate">{v}</td>
                         ))}
                       </tr>
                     ))}
@@ -296,7 +341,6 @@ export default function NewDealPage() {
             </div>
           )}
 
-          {/* CSV errors */}
           {csvErrors.length > 0 && (
             <div className="bg-red-50 border border-red-100 rounded-xl p-4 space-y-1">
               <p className="text-xs font-medium text-red-600 mb-2">Fix these errors before importing:</p>
