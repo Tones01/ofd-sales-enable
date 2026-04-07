@@ -40,7 +40,7 @@ export default function OrderForm({ sheet, sheetDeals, retailers }: {
       .filter(sd => parseInt(qtys[sd.id] ?? "0", 10) > 0)
       .map(sd => ({
         sheet_id: sheet.id,
-        deal_id: (sd.deals as any)?.id,
+        deal_id: sd.deal_id ?? (sd.deals as any)?.id,
         retailer_id: retailerId || null,
         retailer_name: name,
         alloc_qty: parseInt(qtys[sd.id], 10),

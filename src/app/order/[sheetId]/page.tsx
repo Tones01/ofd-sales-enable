@@ -18,7 +18,7 @@ export default async function PublicOrderPage({ params }: { params: { sheetId: s
 
   const { data: sheetDeals } = await supabase
     .from("sheet_deals")
-    .select("id, visible_qty, deals(id, lp_name, brand, product_name, format, sku, thc, minor_cannabinoids, units_per_case, list_price, sale_price)")
+    .select("id, deal_id, visible_qty, deals(lp_name, brand, product_name, format, sku, thc, minor_cannabinoids, units_per_case, list_price, sale_price)")
     .eq("sheet_id", params.sheetId)
 
   const { data: retailers } = await supabase
