@@ -1,40 +1,28 @@
 import { createClient } from "@/lib/supabase/server"
 import { notFound } from "next/navigation"
 import Link from "next/link"
-import { ArrowLeft } from "lucide-react"
-import SheetActions from "@/components/sheets/SheetActions"
+import { ArrowLeft, Copy } from "lucide-react"
+import SheetBuilder from "@/components/sheets/SheetBuilder"
 
 export const dynamic = "force-dynamic"
-
-const STATUS_STYLES: Record<string, string> = {
-  pending:   "bg-amber-50 text-amber-700",
-  accepted:  "bg-emerald-50 text-emerald-700",
-  rejected:  "bg-red-50 text-red-500",
-  fulfilled: "bg-blue-50 text-blue-700",
-}
 
 export default async function SheetDetailPage({ params }: { params: { id: string } }) {
   const supabase = createClient()
 
-  const { data: sheet } = await supabase
-    .from("sheets")
-    .select(`*, profiles ( full_name )`)
-    .eq("id", params.id)
-    .single()
+  const [{ data: sheet }, { data: allDeals }, { data: allRetailers }] = await Promise.all([
+    supabase.from("sheets").select("*, profiles(full_name)").eq("id", params.id).single(),
+    supabase.from("deal_availability").select("*").eq("status", "active").order("lp_name"),
+    supabase.from("retailers").select("id, name, city, province, contact_name, contact_email").eq("status", "active").order("name"),
+  ])
 
   if (!sheet) notFound()
 
-  const [{ data: sheetDeals }, { data: retailers }] = await Promise.all([
-    supabase
-      .from("sheet_deals")
-      .select(`*, deals ( lp_name, product_name, sku, qty_total )`)
-      .eq("sheet_id", params.id),
-    supabase
-      .from("sheet_retailers")
-      .select(`*, deals ( product_name, sku )`)
-      .eq("sheet_id", params.id)
-      .order("created_at"),
+  const [{ data: sheetDeals }, { data: sheetRetailers }] = await Promise.all([
+    supabase.from("sheet_deals").select("*, deals(lp_name, brand, product_name, sku, format, thc, list_price, sale_price, units_per_case)").eq("sheet_id", params.id),
+    supabase.from("sheet_retailers").select("id, retailer_id, retailer_name, alloc_qty, status, requested_ship_date, retailers(name)").eq("sheet_id", params.id),
   ])
+
+  const orderUrl = `${process.env.NEXT_PUBLIC_SITE_URL ?? ""}/order/${params.id}`
 
   return (
     <div className="px-8 py-8 max-w-5xl mx-auto">
@@ -57,81 +45,39 @@ export default async function SheetDetailPage({ params }: { params: { id: string
             </span>
           </div>
           <p className="text-sm text-zinc-400 mt-1">
-            Created by {(sheet.profiles as any)?.full_name ?? "—"}
+            Rep: {(sheet.profiles as any)?.full_name ?? "—"}
+            {(sheet as any).ship_date && (
+              <span className="ml-3">· Ships {(sheet as any).ship_date}</span>
+            )}
           </p>
         </div>
-        <SheetActions sheet={sheet} />
+
+        {/* Order form link */}
+        {sheet.status === "sent" && (
+          <div className="flex items-center gap-2 bg-zinc-50 border border-zinc-100 rounded-lg px-3 py-2">
+            <span className="text-xs text-zinc-400 max-w-[220px] truncate">{orderUrl}</span>
+            <CopyButton text={orderUrl} />
+          </div>
+        )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-        {/* Deals on this sheet */}
-        <section>
-          <h2 className="text-xs font-medium text-zinc-400 uppercase tracking-wider mb-3">Deals</h2>
-          <div className="bg-white border border-zinc-100 rounded-xl overflow-hidden">
-            {sheetDeals?.length ? (
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-zinc-100">
-                    <th className="text-left text-xs text-zinc-400 font-medium px-4 py-3">Product</th>
-                    <th className="text-right text-xs text-zinc-400 font-medium px-4 py-3">Visible qty</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-50">
-                  {sheetDeals.map(sd => (
-                    <tr key={sd.id}>
-                      <td className="px-4 py-3">
-                        <p className="font-medium text-zinc-900">{(sd.deals as any)?.product_name}</p>
-                        <p className="text-xs text-zinc-400">{(sd.deals as any)?.sku}</p>
-                      </td>
-                      <td className="px-4 py-3 text-right text-zinc-600 font-medium">{sd.visible_qty}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            ) : (
-              <p className="text-sm text-zinc-400 p-5">No deals added yet.</p>
-            )}
-          </div>
-        </section>
-
-        {/* Retailer allocations */}
-        <section>
-          <h2 className="text-xs font-medium text-zinc-400 uppercase tracking-wider mb-3">Retailer responses</h2>
-          <div className="bg-white border border-zinc-100 rounded-xl overflow-hidden">
-            {retailers?.length ? (
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-zinc-100">
-                    <th className="text-left text-xs text-zinc-400 font-medium px-4 py-3">Retailer</th>
-                    <th className="text-right text-xs text-zinc-400 font-medium px-4 py-3">Qty</th>
-                    <th className="text-center text-xs text-zinc-400 font-medium px-4 py-3">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-50">
-                  {retailers.map(r => (
-                    <tr key={r.id}>
-                      <td className="px-4 py-3">
-                        <p className="font-medium text-zinc-900">{r.retailer_name}</p>
-                        <p className="text-xs text-zinc-400">{(r.deals as any)?.product_name}</p>
-                      </td>
-                      <td className="px-4 py-3 text-right text-zinc-600">{r.alloc_qty}</td>
-                      <td className="px-4 py-3 text-center">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_STYLES[r.status]}`}>
-                          {r.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            ) : (
-              <p className="text-sm text-zinc-400 p-5">No retailer allocations yet.</p>
-            )}
-          </div>
-        </section>
-
-      </div>
+      <SheetBuilder
+        sheet={sheet}
+        allDeals={allDeals ?? []}
+        allRetailers={allRetailers ?? []}
+        sheetDeals={sheetDeals ?? []}
+        sheetRetailers={sheetRetailers ?? []}
+        orderUrl={orderUrl}
+      />
     </div>
+  )
+}
+
+function CopyButton({ text }: { text: string }) {
+  // Rendered server-side, interaction handled in SheetBuilder client component
+  return (
+    <span title="Copy link">
+      <Copy size={13} className="text-zinc-400" />
+    </span>
   )
 }
