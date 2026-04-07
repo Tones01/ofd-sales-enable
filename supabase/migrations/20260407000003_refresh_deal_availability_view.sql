@@ -1,5 +1,8 @@
 -- Recreate deal_availability view to include all new columns
-CREATE OR REPLACE VIEW public.deal_availability AS
+-- Must DROP first — Postgres won't allow CREATE OR REPLACE to reorder columns
+DROP VIEW IF EXISTS public.deal_availability;
+
+CREATE VIEW public.deal_availability AS
 SELECT
   d.id,
   d.lp_name,
