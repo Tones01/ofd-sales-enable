@@ -92,9 +92,10 @@ export default function SheetBuilder({
     if (!selectedRetailerIds.size) return
     setSaving(true); setError(null)
     const supabase = createClient()
-    const rows = Array.from(selectedRetailerIds).map(retailer_id => ({
-      sheet_id: sheet.id, retailer_id, status: "pending", alloc_qty: 0,
-    }))
+    const rows = Array.from(selectedRetailerIds).map(retailer_id => {
+      const retailer = allRetailers.find(r => r.id === retailer_id)
+      return { sheet_id: sheet.id, retailer_id, retailer_name: retailer?.name ?? "", status: "pending", alloc_qty: 0 }
+    })
     const { data, error } = await supabase.from("sheet_retailers").insert(rows).select("id, retailer_id, retailer_name, alloc_qty, status, requested_ship_date, retailers(name)")
     if (error) { setError(error.message) }
     else { setSheetRetailers(prev => [...prev, ...(data ?? [])]); setSelectedRetailerIds(new Set()) }
