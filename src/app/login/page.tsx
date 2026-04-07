@@ -23,8 +23,8 @@ export default function LoginPage() {
       setError(error.message)
       setLoading(false)
     } else {
-      router.push("/")
-      router.refresh()
+      // Hard redirect — ensures middleware re-runs with the new session cookie
+      window.location.href = "/"
     }
   }
 
