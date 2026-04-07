@@ -147,15 +147,12 @@ export default function EditDealPage() {
           </Field>
         </div>
 
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 gap-4">
           <Field label="Qty available" required hint="Total units in this deal">
             <input className={input} type="number" min="1" value={form.qty_available} onChange={e => set("qty_available", e.target.value)} required />
           </Field>
-          <Field label="Units per case" hint="Pack size, e.g. 6, 12, 24">
+          <Field label="Units per case" hint="Pack size — how many units in one case">
             <input className={input} type="number" min="1" value={form.units_per_case} onChange={e => set("units_per_case", e.target.value)} placeholder="e.g. 12" />
-          </Field>
-          <Field label="Expiry date">
-            <input className={input} type="date" value={form.deal_expiry} onChange={e => set("deal_expiry", e.target.value)} />
           </Field>
         </div>
 
@@ -166,6 +163,12 @@ export default function EditDealPage() {
           <Field label="Sale price ($)">
             <input className={input} type="number" step="0.01" min="0" value={form.sale_price} onChange={e => set("sale_price", e.target.value)} />
           </Field>
+          <Field label="Expiry date">
+            <input className={input} type="date" value={form.deal_expiry} onChange={e => set("deal_expiry", e.target.value)} />
+          </Field>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4">
           <Field label="Status">
             <select className={input} value={form.status} onChange={e => set("status", e.target.value)}>
               <option value="active">Active</option>
