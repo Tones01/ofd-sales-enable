@@ -29,7 +29,8 @@ export default function EditDealPage() {
 
   const [form, setForm] = useState({
     lp_name: "", brand: "", product_name: "", format: "",
-    sku: "", case_qty: "", regular_price: "", sale_price: "",
+    sku: "", qty_available: "", units_per_case: "",
+    regular_price: "", sale_price: "",
     thc: "", minor_cannabinoids: "",
     deal_expiry: "", credit_description: "", notes: "", status: "active",
   })
@@ -55,7 +56,8 @@ export default function EditDealPage() {
         product_name:       data.product_name ?? "",
         format:             (data as any).format ?? "",
         sku:                data.sku ?? "",
-        case_qty:           String(data.qty_total ?? ""),
+        qty_available:      String(data.qty_total ?? ""),
+        units_per_case:     (data as any).units_per_case != null ? String((data as any).units_per_case) : "",
         regular_price:      (data as any).list_price != null ? String((data as any).list_price) : "",
         sale_price:         (data as any).sale_price != null ? String((data as any).sale_price) : "",
         thc:                (data as any).thc ?? "",
@@ -81,7 +83,8 @@ export default function EditDealPage() {
       product_name:       form.product_name,
       format:             form.format || null,
       sku:                form.sku,
-      qty_total:          parseInt(form.case_qty, 10),
+      qty_total:          parseInt(form.qty_available, 10),
+      units_per_case:     form.units_per_case ? parseInt(form.units_per_case, 10) : null,
       list_price:         form.regular_price ? parseFloat(form.regular_price) : null,
       sale_price:         form.sale_price ? parseFloat(form.sale_price) : null,
       thc:                form.thc || null,
@@ -145,14 +148,29 @@ export default function EditDealPage() {
         </div>
 
         <div className="grid grid-cols-3 gap-4">
-          <Field label="Case qty" required hint="Orders placed in cases">
-            <input className={input} type="number" min="1" value={form.case_qty} onChange={e => set("case_qty", e.target.value)} required />
+          <Field label="Qty available" required hint="Total units in this deal">
+            <input className={input} type="number" min="1" value={form.qty_available} onChange={e => set("qty_available", e.target.value)} required />
           </Field>
+          <Field label="Units per case" hint="Pack size, e.g. 6, 12, 24">
+            <input className={input} type="number" min="1" value={form.units_per_case} onChange={e => set("units_per_case", e.target.value)} placeholder="e.g. 12" />
+          </Field>
+          <Field label="Expiry date">
+            <input className={input} type="date" value={form.deal_expiry} onChange={e => set("deal_expiry", e.target.value)} />
+          </Field>
+        </div>
+
+        <div className="grid grid-cols-3 gap-4">
           <Field label="Regular price ($)">
             <input className={input} type="number" step="0.01" min="0" value={form.regular_price} onChange={e => set("regular_price", e.target.value)} />
           </Field>
           <Field label="Sale price ($)">
             <input className={input} type="number" step="0.01" min="0" value={form.sale_price} onChange={e => set("sale_price", e.target.value)} />
+          </Field>
+          <Field label="Status">
+            <select className={input} value={form.status} onChange={e => set("status", e.target.value)}>
+              <option value="active">Active</option>
+              <option value="closed">Closed</option>
+            </select>
           </Field>
         </div>
 
@@ -162,18 +180,6 @@ export default function EditDealPage() {
           </Field>
           <Field label="Minor cannabinoids" hint="e.g. CBD 0.5% | CBG 1%">
             <input className={input} value={form.minor_cannabinoids} onChange={e => set("minor_cannabinoids", e.target.value)} />
-          </Field>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="Expiry date">
-            <input className={input} type="date" value={form.deal_expiry} onChange={e => set("deal_expiry", e.target.value)} />
-          </Field>
-          <Field label="Status">
-            <select className={input} value={form.status} onChange={e => set("status", e.target.value)}>
-              <option value="active">Active</option>
-              <option value="closed">Closed</option>
-            </select>
           </Field>
         </div>
 

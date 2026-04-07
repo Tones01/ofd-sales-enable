@@ -18,7 +18,7 @@ export default async function DealsPage() {
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="font-serif text-2xl text-zinc-900">Deals</h1>
-          <p className="text-sm text-zinc-400 mt-1">{deals?.length ?? 0} LP deals — quantities shown in cases</p>
+          <p className="text-sm text-zinc-400 mt-1">{deals?.length ?? 0} LP deals — quantities in units</p>
         </div>
         {isAdmin && (
           <Link
@@ -40,18 +40,20 @@ export default async function DealsPage() {
               <th className="text-left text-xs text-zinc-400 font-medium px-5 py-3.5 hidden xl:table-cell">THC</th>
               <th className="text-right text-xs text-zinc-400 font-medium px-5 py-3.5 hidden xl:table-cell">Reg. $</th>
               <th className="text-right text-xs text-zinc-400 font-medium px-5 py-3.5 hidden xl:table-cell">Sale $</th>
-              {/* Quantity columns — all in cases */}
-              <th className="text-right text-xs text-zinc-400 font-medium px-5 py-3.5">
-                <span title="Total cases in this deal">Total</span>
+              <th className="text-right text-xs text-zinc-400 font-medium px-5 py-3.5 hidden lg:table-cell">
+                <span title="Number of units per case (pack size)">Units/case</span>
               </th>
               <th className="text-right text-xs text-zinc-400 font-medium px-5 py-3.5">
-                <span title="Cases currently on active sheets (pending retailer response)">On sheets</span>
+                <span title="Total units in this deal">Total units</span>
               </th>
               <th className="text-right text-xs text-zinc-400 font-medium px-5 py-3.5">
-                <span title="Cases accepted by retailers">Accepted</span>
+                <span title="Units currently on active sheets (pending retailer response)">On sheets</span>
               </th>
               <th className="text-right text-xs text-zinc-400 font-medium px-5 py-3.5">
-                <span title="Cases not yet allocated to any sheet">Free</span>
+                <span title="Units accepted by retailers">Accepted</span>
+              </th>
+              <th className="text-right text-xs text-zinc-400 font-medium px-5 py-3.5">
+                <span title="Units not yet allocated to any sheet">Available</span>
               </th>
               <th className="text-center text-xs text-zinc-400 font-medium px-5 py-3.5">Expiry</th>
               <th className="text-center text-xs text-zinc-400 font-medium px-5 py-3.5">Status</th>
@@ -69,6 +71,9 @@ export default async function DealsPage() {
                 </td>
                 <td className="px-5 py-4 text-zinc-500 text-sm hidden lg:table-cell">{(deal as any).format ?? "—"}</td>
                 <td className="px-5 py-4 text-zinc-500 text-sm hidden xl:table-cell">{(deal as any).thc ?? "—"}</td>
+                <td className="px-5 py-4 text-right text-zinc-500 tabular-nums hidden lg:table-cell">
+                  {(deal as any).units_per_case != null ? (deal as any).units_per_case : "—"}
+                </td>
                 <td className="px-5 py-4 text-right text-zinc-500 hidden xl:table-cell">
                   {(deal as any).list_price != null ? `$${Number((deal as any).list_price).toFixed(2)}` : "—"}
                 </td>

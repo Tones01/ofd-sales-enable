@@ -9,13 +9,13 @@ const input = "w-full px-3.5 py-2.5 text-sm bg-white border border-zinc-200 roun
 
 const CSV_HEADERS = [
   "lp_name", "brand", "product_name", "format", "sku",
-  "case_qty", "regular_price", "sale_price", "thc", "minor_cannabinoids",
-  "expiry_date", "credit_description", "notes",
+  "qty_available", "units_per_case", "regular_price", "sale_price",
+  "thc", "minor_cannabinoids", "expiry_date", "credit_description", "notes",
 ]
 
 const CSV_EXAMPLE_ROW = [
   "Auxly Cannabis", "Kolab Project", "Kolab Project Indica", "28g Flower",
-  "AUX-KLP-28-IND", "12", "19.99", "14.99", "22%", "CBD 0.5% | CBG 1%",
+  "AUX-KLP-28-IND", "240", "12", "19.99", "14.99", "22%", "CBD 0.5% | CBG 1%",
   "2026-12-31", "$2/unit markdown", "",
 ]
 
@@ -71,7 +71,8 @@ export default function NewDealPage() {
 
   const [form, setForm] = useState({
     lp_name: "", brand: "", product_name: "", format: "",
-    sku: "", case_qty: "", regular_price: "", sale_price: "",
+    sku: "", qty_available: "", units_per_case: "",
+    regular_price: "", sale_price: "",
     thc: "", minor_cannabinoids: "",
     deal_expiry: "", credit_description: "", notes: "",
   })
@@ -101,20 +102,21 @@ export default function NewDealPage() {
     setError(null)
     const supabase = createClient()
     const { error } = await supabase.from("deals").insert({
-      lp_name: form.lp_name,
-      brand: form.brand || null,
-      product_name: form.product_name,
-      format: form.format || null,
-      sku: form.sku,
-      qty_total: parseInt(form.case_qty, 10),
-      list_price: form.regular_price ? parseFloat(form.regular_price) : null,
-      sale_price: form.sale_price ? parseFloat(form.sale_price) : null,
-      thc: form.thc || null,
+      lp_name:            form.lp_name,
+      brand:              form.brand || null,
+      product_name:       form.product_name,
+      format:             form.format || null,
+      sku:                form.sku,
+      qty_total:          parseInt(form.qty_available, 10),
+      units_per_case:     form.units_per_case ? parseInt(form.units_per_case, 10) : null,
+      list_price:         form.regular_price ? parseFloat(form.regular_price) : null,
+      sale_price:         form.sale_price ? parseFloat(form.sale_price) : null,
+      thc:                form.thc || null,
       minor_cannabinoids: form.minor_cannabinoids || null,
-      deal_expiry: form.deal_expiry || null,
+      deal_expiry:        form.deal_expiry || null,
       credit_description: form.credit_description || null,
-      notes: form.notes || null,
-      status: "active",
+      notes:              form.notes || null,
+      status:             "active",
     })
     if (error) { setError(error.message); setLoading(false) }
     else { window.location.href = "/deals" }
@@ -136,24 +138,25 @@ export default function NewDealPage() {
       if (!row["lp_name"] && !row["licensed_producer"]) { errs.push({ row: rowNum, error: "lp_name is required" }); return }
       if (!row["product_name"]) { errs.push({ row: rowNum, error: "product_name is required" }); return }
       if (!row["sku"]) { errs.push({ row: rowNum, error: "sku is required" }); return }
-      const rawQty = row["case_qty"] || row["qty_total"] || ""
+      const rawQty = row["qty_available"] || row["qty_total"] || row["case_qty"] || ""
       const qty = parseInt(rawQty, 10)
-      if (isNaN(qty) || qty <= 0) { errs.push({ row: rowNum, error: `Invalid case_qty: "${rawQty}"` }); return }
+      if (isNaN(qty) || qty <= 0) { errs.push({ row: rowNum, error: `Invalid qty_available: "${rawQty}"` }); return }
       deals.push({
-        lp_name: row["lp_name"] || row["licensed_producer"],
-        brand: row["brand"] || null,
-        product_name: row["product_name"],
-        format: row["format"] || null,
-        sku: row["sku"],
-        qty_total: qty,
-        list_price: row["regular_price"] ? parseFloat(row["regular_price"]) : null,
-        sale_price: row["sale_price"] ? parseFloat(row["sale_price"]) : null,
-        thc: row["thc"] || null,
+        lp_name:            row["lp_name"] || row["licensed_producer"],
+        brand:              row["brand"] || null,
+        product_name:       row["product_name"],
+        format:             row["format"] || null,
+        sku:                row["sku"],
+        qty_total:          qty,
+        units_per_case:     row["units_per_case"] ? parseInt(row["units_per_case"], 10) : null,
+        list_price:         row["regular_price"] ? parseFloat(row["regular_price"]) : null,
+        sale_price:         row["sale_price"] ? parseFloat(row["sale_price"]) : null,
+        thc:                row["thc"] || null,
         minor_cannabinoids: row["minor_cannabinoids"] || null,
-        deal_expiry: row["expiry_date"] || row["deal_expiry"] || null,
+        deal_expiry:        row["expiry_date"] || row["deal_expiry"] || null,
         credit_description: row["credit_description"] || null,
-        notes: row["notes"] || null,
-        status: row["status"] === "closed" ? "closed" : "active",
+        notes:              row["notes"] || null,
+        status:             row["status"] === "closed" ? "closed" : "active",
       })
     })
 
@@ -229,9 +232,18 @@ export default function NewDealPage() {
           </div>
 
           <div className="grid grid-cols-3 gap-4">
-            <Field label="Case qty" required hint="Orders placed in cases">
-              <input className={input} type="number" min="1" value={form.case_qty} onChange={e => set("case_qty", e.target.value)} placeholder="12" required />
+            <Field label="Qty available" required hint="Total units in this deal">
+              <input className={input} type="number" min="1" value={form.qty_available} onChange={e => set("qty_available", e.target.value)} placeholder="e.g. 240" required />
             </Field>
+            <Field label="Units per case" hint="Pack size, e.g. 6, 12, 24">
+              <input className={input} type="number" min="1" value={form.units_per_case} onChange={e => set("units_per_case", e.target.value)} placeholder="e.g. 12" />
+            </Field>
+            <Field label="Expiry date">
+              <input className={input} type="date" value={form.deal_expiry} onChange={e => set("deal_expiry", e.target.value)} />
+            </Field>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
             <Field label="Regular price ($)">
               <input className={input} type="number" step="0.01" min="0" value={form.regular_price} onChange={e => set("regular_price", e.target.value)} placeholder="0.00" />
             </Field>
@@ -248,10 +260,6 @@ export default function NewDealPage() {
               <input className={input} value={form.minor_cannabinoids} onChange={e => set("minor_cannabinoids", e.target.value)} placeholder="e.g. CBD 0.5% | CBG 1%" />
             </Field>
           </div>
-
-          <Field label="Expiry date">
-            <input className={input} type="date" value={form.deal_expiry} onChange={e => set("deal_expiry", e.target.value)} />
-          </Field>
 
           <Field label="Credit / markdown description" hint="Optional">
             <textarea className={`${input} resize-none`} rows={2} value={form.credit_description} onChange={e => set("credit_description", e.target.value)} placeholder="e.g. $2.00/unit markdown on 90-day aged inventory" />
@@ -272,16 +280,15 @@ export default function NewDealPage() {
         </form>
       ) : (
         <form onSubmit={handleCsvSubmit} className="space-y-6">
-          {/* Template info + download */}
           <div className="bg-zinc-50 border border-zinc-100 rounded-xl p-4 text-sm text-zinc-500">
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
                 <p className="font-medium text-zinc-700 mb-1">Required columns:</p>
                 <code className="text-xs bg-white border border-zinc-100 rounded px-2 py-1 block mt-1 break-all">
-                  lp_name, product_name, sku, case_qty
+                  lp_name, product_name, sku, qty_available
                 </code>
                 <p className="mt-2 text-xs">
-                  Optional: <code>brand</code>, <code>format</code>, <code>regular_price</code>, <code>sale_price</code>, <code>thc</code>, <code>minor_cannabinoids</code>, <code>expiry_date</code>, <code>credit_description</code>, <code>notes</code>
+                  Optional: <code>brand</code>, <code>format</code>, <code>units_per_case</code>, <code>regular_price</code>, <code>sale_price</code>, <code>thc</code>, <code>minor_cannabinoids</code>, <code>expiry_date</code>, <code>credit_description</code>, <code>notes</code>
                 </p>
               </div>
               <button
@@ -311,7 +318,7 @@ export default function NewDealPage() {
               rows={6}
               value={csvText}
               onChange={e => { setCsvText(e.target.value); setCsvPreview(parseCSV(e.target.value).slice(0, 5)) }}
-              placeholder={"lp_name,brand,product_name,format,sku,case_qty,regular_price,sale_price,thc,minor_cannabinoids,expiry_date\nAuxly Cannabis,Kolab Project,Kolab Indica,28g Flower,AUX-KLP-28-IND,12,19.99,14.99,22%,CBD 0.5%,2026-12-31"}
+              placeholder={"lp_name,brand,product_name,format,sku,qty_available,units_per_case,regular_price,sale_price,thc,minor_cannabinoids,expiry_date\nAuxly Cannabis,Kolab Project,Kolab Indica,28g Flower,AUX-KLP-28-IND,240,12,19.99,14.99,22%,CBD 0.5%,2026-12-31"}
             />
           </Field>
 
