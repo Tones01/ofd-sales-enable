@@ -2,13 +2,18 @@ import { createClient } from "@/lib/supabase/server"
 import { notFound } from "next/navigation"
 import { headers } from "next/headers"
 import Link from "next/link"
-import { ArrowLeft, Copy } from "lucide-react"
+import { ArrowLeft } from "lucide-react"
 import SheetBuilder from "@/components/sheets/SheetBuilder"
 
 export const dynamic = "force-dynamic"
 
 export default async function SheetDetailPage({ params }: { params: { id: string } }) {
   const supabase = createClient()
+
+  const headersList = headers()
+  const host = headersList.get("host") ?? "localhost:3000"
+  const protocol = host.startsWith("localhost") ? "http" : "https"
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? `${protocol}://${host}`
 
   const [{ data: sheet }, { data: allDeals }, { data: allRetailers }] = await Promise.all([
     supabase.from("sheets").select("*, profiles(full_name)").eq("id", params.id).single(),
@@ -20,14 +25,12 @@ export default async function SheetDetailPage({ params }: { params: { id: string
 
   const [{ data: sheetDeals }, { data: sheetRetailers }] = await Promise.all([
     supabase.from("sheet_deals").select("*, deals(lp_name, brand, product_name, sku, format, thc, list_price, sale_price, units_per_case)").eq("sheet_id", params.id),
-    supabase.from("sheet_retailers").select("id, retailer_id, retailer_name, alloc_qty, status, requested_ship_date, retailers(name)").eq("sheet_id", params.id),
+    // Fetch everything: placeholder rows (deal_id IS NULL) + order lines (deal_id IS NOT NULL)
+    supabase.from("sheet_retailers")
+      .select("id, retailer_id, retailer_name, deal_id, alloc_qty, status, requested_ship_date, retailer_notes, order_token, responded_at, retailers(id, name), deals(lp_name, brand, product_name, sku, format, thc, list_price, sale_price, units_per_case)")
+      .eq("sheet_id", params.id)
+      .order("created_at", { ascending: true }),
   ])
-
-  const headersList = headers()
-  const host = headersList.get("host") ?? "localhost:3000"
-  const protocol = host.startsWith("localhost") ? "http" : "https"
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? `${protocol}://${host}`
-  const orderUrl = `${siteUrl}/order/${params.id}`
 
   return (
     <div className="px-8 py-8 max-w-5xl mx-auto">
@@ -56,14 +59,6 @@ export default async function SheetDetailPage({ params }: { params: { id: string
             )}
           </p>
         </div>
-
-        {/* Order form link */}
-        {sheet.status === "sent" && (
-          <div className="flex items-center gap-2 bg-zinc-50 border border-zinc-100 rounded-lg px-3 py-2">
-            <span className="text-xs text-zinc-400 max-w-[220px] truncate">{orderUrl}</span>
-            <CopyButton text={orderUrl} />
-          </div>
-        )}
       </div>
 
       <SheetBuilder
@@ -72,17 +67,8 @@ export default async function SheetDetailPage({ params }: { params: { id: string
         allRetailers={allRetailers ?? []}
         sheetDeals={sheetDeals ?? []}
         sheetRetailers={sheetRetailers ?? []}
-        orderUrl={orderUrl}
+        siteUrl={siteUrl}
       />
     </div>
-  )
-}
-
-function CopyButton({ text }: { text: string }) {
-  // Rendered server-side, interaction handled in SheetBuilder client component
-  return (
-    <span title="Copy link">
-      <Copy size={13} className="text-zinc-400" />
-    </span>
   )
 }

@@ -15,6 +15,7 @@ export default async function DashboardPage() {
     { data: sheets },
     { data: retailers },
     { data: repStats },
+    { data: pendingRaw },
   ] = await Promise.all([
     supabase.from("deal_availability").select("*"),
     supabase.from("sheets")
@@ -23,7 +24,22 @@ export default async function DashboardPage() {
       .order("ship_date", { ascending: true }),
     supabase.from("retailers").select("id").eq("status", "active"),
     supabase.from("rep_stats").select("*"),
+    // Pending order lines submitted by retailers, not yet actioned
+    supabase.from("sheet_retailers")
+      .select("sheet_id, retailer_id, retailer_name, created_at, retailers(name), sheets(id, name, ship_date, status)")
+      .eq("status", "pending")
+      .not("deal_id", "is", null)
+      .order("created_at", { ascending: false }),
   ])
+
+  // Deduplicate: one entry per (sheet_id, retailer_id) so we don't show one row per deal
+  const seenPending = new Set<string>()
+  const pendingOrders = (pendingRaw ?? []).filter(row => {
+    const key = `${row.sheet_id}-${row.retailer_id}`
+    if (seenPending.has(key)) return false
+    seenPending.add(key)
+    return (row.sheets as any)?.status === "sent"
+  }).slice(0, 10)
 
   const activeDeals = deals?.filter(d => d.status === "active") ?? []
   const totalAvailable = activeDeals.reduce((sum, d) => sum + d.qty_available, 0)
@@ -55,6 +71,36 @@ export default async function DashboardPage() {
         <StatCard icon={Store} label="Active retailers" value={(retailers?.length ?? 0).toString()} />
         <StatCard icon={TrendingUp} label="Units committed" value={totalUnitsOut.toLocaleString()} sub="accepted + fulfilled" />
       </div>
+
+      {/* Pending order reviews */}
+      {pendingOrders.length > 0 && (
+        <div className="mb-8 bg-amber-50 border border-amber-100 rounded-xl overflow-hidden">
+          <div className="px-5 py-3.5 border-b border-amber-100">
+            <h2 className="text-xs font-medium text-amber-700 uppercase tracking-wider">
+              {pendingOrders.length} order{pendingOrders.length > 1 ? "s" : ""} pending review
+            </h2>
+          </div>
+          <div className="divide-y divide-amber-50">
+            {pendingOrders.map(row => {
+              const sheet = row.sheets as any
+              const name = (row.retailers as any)?.name ?? row.retailer_name ?? "Unknown"
+              return (
+                <Link
+                  key={`${row.sheet_id}-${row.retailer_id}`}
+                  href={`/sheets/${row.sheet_id}`}
+                  className="flex items-center justify-between px-5 py-3 hover:bg-amber-100/50 transition-colors"
+                >
+                  <div>
+                    <p className="text-sm font-medium text-zinc-900">{name}</p>
+                    <p className="text-xs text-zinc-500">{sheet?.name}{sheet?.ship_date ? ` · Ships ${sheet.ship_date}` : ""}</p>
+                  </div>
+                  <span className="text-xs text-amber-600 font-medium">Review →</span>
+                </Link>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Shipping sections */}
       <div className="space-y-6 mb-10">

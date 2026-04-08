@@ -1,6 +1,9 @@
 import { createClient } from "@/lib/supabase/server"
 import Link from "next/link"
 import { Plus, Pencil } from "lucide-react"
+import EditableQty from "@/components/deals/EditableQty"
+
+export const dynamic = "force-dynamic"
 
 export default async function DealsPage() {
   const supabase = createClient()
@@ -82,7 +85,11 @@ export default async function DealsPage() {
                 <td className="px-5 py-4 text-right text-zinc-500 tabular-nums hidden lg:table-cell">
                   {(deal as any).units_per_case != null ? (deal as any).units_per_case : "—"}
                 </td>
-                <td className="px-5 py-4 text-right text-zinc-500 tabular-nums">{deal.qty_total.toLocaleString()}</td>
+                <td className="px-5 py-4 text-right text-zinc-500 tabular-nums">
+                  {isAdmin
+                    ? <EditableQty dealId={deal.id} value={deal.qty_total} />
+                    : deal.qty_total.toLocaleString()}
+                </td>
                 <td className="px-5 py-4 text-right text-zinc-500 tabular-nums">{deal.qty_reserved.toLocaleString()}</td>
                 <td className="px-5 py-4 text-right text-zinc-500 tabular-nums">{deal.qty_accepted.toLocaleString()}</td>
                 <td className="px-5 py-4 text-right tabular-nums">
