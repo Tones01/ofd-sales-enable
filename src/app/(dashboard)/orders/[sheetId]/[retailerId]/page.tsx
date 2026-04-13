@@ -34,8 +34,8 @@ export default async function OrderReviewPage({
 
   if (!sheet || !orderLines?.length) notFound()
 
-  const first = orderLines[0]
-  const retailerName = (first.retailers as any)?.name ?? first.retailer_name ?? "Unknown store"
+  const first = orderLines[0] as any
+  const retailerName = first.retailers?.name ?? first.retailer_name ?? "Unknown store"
 
   return (
     <div className="px-8 py-8 max-w-4xl mx-auto">

@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { createClient } from "@/lib/supabase/client"
-import { Plus, Trash2, Send, Check, Archive, Link2, ExternalLink } from "lucide-react"
+import { Plus, Trash2, Send, Check, Archive, Link2, ExternalLink, ClipboardList } from "lucide-react"
 
 const STATUS_STYLES: Record<string, string> = {
   pending:   "bg-amber-50 text-amber-700",
@@ -519,9 +519,10 @@ export default function SheetBuilder({
                         className="text-xs font-medium px-3 py-1.5 bg-white text-red-500 border border-red-200 rounded-lg hover:bg-red-50 disabled:opacity-50 transition-colors"
                       >
                         {rejectingKey === group.retailer_id ? "Rejecting…" : "Reject"}
-                      </button></>}
-                    </div>
-                  )}
+                      </button>
+                      </>
+                    )}
+                  </div>
                 </div>
 
                 {/* Order lines */}
