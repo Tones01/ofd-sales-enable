@@ -113,7 +113,7 @@ export default async function DashboardPage() {
           ) : (
             <div className="space-y-2">
               {shippingThisWeek.map(s => (
-                <SheetCard key={s.id} sheet={s} highlight />
+                <SheetCard key={s.id} sheet={s} highlight ordersView />
               ))}
             </div>
           )}
@@ -217,10 +217,11 @@ export default async function DashboardPage() {
   )
 }
 
-function SheetCard({ sheet, highlight = false }: { sheet: any; highlight?: boolean }) {
+function SheetCard({ sheet, highlight = false, ordersView = false }: { sheet: any; highlight?: boolean; ordersView?: boolean }) {
   const shipDate = (sheet as any).ship_date
+  const href = ordersView ? `/sheets/${sheet.id}/orders` : `/sheets/${sheet.id}`
   return (
-    <Link href={`/sheets/${sheet.id}`} className={`flex items-center justify-between px-5 py-4 rounded-xl border transition-colors hover:shadow-sm ${
+    <Link href={href} className={`flex items-center justify-between px-5 py-4 rounded-xl border transition-colors hover:shadow-sm ${
       highlight ? "bg-white border-zinc-200" : "bg-white border-zinc-100"
     }`}>
       <div>
@@ -231,6 +232,9 @@ function SheetCard({ sheet, highlight = false }: { sheet: any; highlight?: boole
         </p>
       </div>
       <div className="flex items-center gap-3">
+        {ordersView && (
+          <span className="text-xs text-zinc-400">View orders →</span>
+        )}
         <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
           sheet.status === "draft" ? "bg-zinc-100 text-zinc-500" :
           sheet.status === "sent"  ? "bg-blue-50 text-blue-700" :

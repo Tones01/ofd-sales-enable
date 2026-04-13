@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server"
 import { notFound } from "next/navigation"
 import { headers } from "next/headers"
 import Link from "next/link"
-import { ArrowLeft } from "lucide-react"
+import { ArrowLeft, TableIcon } from "lucide-react"
 import SheetBuilder from "@/components/sheets/SheetBuilder"
 
 export const dynamic = "force-dynamic"
@@ -40,7 +40,7 @@ export default async function SheetDetailPage({ params }: { params: { id: string
       </Link>
 
       {/* Header */}
-      <div className="flex items-start justify-between mb-8">
+      <div className="flex items-start justify-between mb-8 flex-wrap gap-4">
         <div>
           <div className="flex items-center gap-3">
             <h1 className="font-serif text-2xl text-zinc-900">{sheet.name}</h1>
@@ -59,6 +59,15 @@ export default async function SheetDetailPage({ params }: { params: { id: string
             )}
           </p>
         </div>
+        {sheet.status === "sent" && (
+          <Link
+            href={`/sheets/${params.id}/orders`}
+            className="flex items-center gap-2 text-sm font-medium text-zinc-700 bg-white border border-zinc-200 px-4 py-2 rounded-lg hover:bg-zinc-50 transition-colors"
+          >
+            <TableIcon size={14} />
+            View order table
+          </Link>
+        )}
       </div>
 
       <SheetBuilder
