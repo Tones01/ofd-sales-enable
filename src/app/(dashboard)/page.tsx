@@ -87,7 +87,7 @@ export default async function DashboardPage() {
               return (
                 <Link
                   key={`${row.sheet_id}-${row.retailer_id}`}
-                  href={`/sheets/${row.sheet_id}`}
+                  href={`/orders/${row.sheet_id}/${row.retailer_id}`}
                   className="flex items-center justify-between px-5 py-3 hover:bg-amber-100/50 transition-colors"
                 >
                   <div>

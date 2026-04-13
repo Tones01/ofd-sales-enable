@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { createClient } from "@/lib/supabase/client"
-import { Plus, Trash2, Send, Copy, Check, Archive, Link2, ClipboardList } from "lucide-react"
+import { Plus, Trash2, Send, Check, Archive, Link2, ExternalLink } from "lucide-react"
 
 const STATUS_STYLES: Record<string, string> = {
   pending:   "bg-amber-50 text-amber-700",
@@ -491,12 +491,21 @@ export default function SheetBuilder({
                       {group.status}
                     </span>
                     {group.requested_ship_date && (
-                      <span className="text-xs text-zinc-400">Ships {group.requested_ship_date}</span>
+                      <span className="text-xs text-zinc-400">Req. ship: {group.requested_ship_date}</span>
                     )}
                   </div>
 
-                  {group.status === "pending" && group.retailer_id && (
-                    <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2">
+                    {group.retailer_id && (
+                      <a
+                        href={`/orders/${sheet.id}/${group.retailer_id}`}
+                        className="flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-900 transition-colors px-2.5 py-1.5 rounded-lg hover:bg-zinc-100"
+                      >
+                        <ExternalLink size={11} /> View order
+                      </a>
+                    )}
+                    {group.status === "pending" && group.retailer_id && (
+                      <>
                       <button
                         onClick={() => acceptOrder(group.retailer_id!)}
                         disabled={acceptingKey === group.retailer_id || rejectingKey === group.retailer_id}
@@ -510,7 +519,7 @@ export default function SheetBuilder({
                         className="text-xs font-medium px-3 py-1.5 bg-white text-red-500 border border-red-200 rounded-lg hover:bg-red-50 disabled:opacity-50 transition-colors"
                       >
                         {rejectingKey === group.retailer_id ? "Rejecting…" : "Reject"}
-                      </button>
+                      </button></>}
                     </div>
                   )}
                 </div>
