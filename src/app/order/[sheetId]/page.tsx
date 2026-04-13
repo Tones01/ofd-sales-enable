@@ -21,11 +21,6 @@ export default async function PublicOrderPage({ params }: { params: { sheetId: s
     .select("id, deal_id, visible_qty, deals(lp_name, brand, product_name, format, sku, thc, minor_cannabinoids, units_per_case, list_price, sale_price)")
     .eq("sheet_id", params.sheetId)
 
-  const { data: retailers } = await supabase
-    .from("sheet_retailers")
-    .select("id, retailer_id, retailers(id, name)")
-    .eq("sheet_id", params.sheetId)
-
   return (
     <div className="min-h-screen bg-zinc-50">
       <div className="max-w-3xl mx-auto px-6 py-12">
@@ -48,7 +43,6 @@ export default async function PublicOrderPage({ params }: { params: { sheetId: s
         <OrderForm
           sheet={sheet}
           sheetDeals={sheetDeals ?? []}
-          retailers={retailers ?? []}
         />
       </div>
     </div>

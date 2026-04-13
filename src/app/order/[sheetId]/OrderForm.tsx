@@ -6,21 +6,17 @@ import { Check } from "lucide-react"
 
 const input = "w-full px-3.5 py-2.5 text-sm bg-white border border-zinc-200 rounded-lg text-zinc-900 placeholder:text-zinc-300 focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent transition"
 
-export default function OrderForm({ sheet, sheetDeals, retailers }: {
+export default function OrderForm({ sheet, sheetDeals }: {
   sheet: any
   sheetDeals: any[]
-  retailers: any[]
 }) {
-  const [retailerId, setRetailerId] = useState("")
-  const [storeName, setStoreName] = useState("")    // fallback if not in system
+  const [storeName, setStoreName] = useState("")
   const [requestedShipDate, setRequestedShipDate] = useState("")
   const [notes, setNotes] = useState("")
   const [qtys, setQtys] = useState<Record<string, string>>({})
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  const hasRetailers = retailers.length > 0
 
   function setQty(sheetDealId: string, val: string) {
     setQtys(prev => ({ ...prev, [sheetDealId]: val }))
@@ -30,11 +26,7 @@ export default function OrderForm({ sheet, sheetDeals, retailers }: {
     e.preventDefault()
     setError(null)
 
-    const name = hasRetailers
-      ? retailers.find(r => r.retailer_id === retailerId)?.retailers?.name ?? storeName
-      : storeName
-
-    if (!name.trim()) { setError("Please select or enter your store name."); return }
+    if (!storeName.trim()) { setError("Please enter your store name."); return }
 
     const lines = sheetDeals
       .filter(sd => parseInt(qtys[sd.id] ?? "0", 10) > 0)
@@ -50,8 +42,8 @@ export default function OrderForm({ sheet, sheetDeals, retailers }: {
 
     const { error: rpcError } = await supabase.rpc("submit_order", {
       p_sheet_id:            sheet.id,
-      p_retailer_id:         (retailerId && retailerId !== "other") ? retailerId : null,
-      p_retailer_name:       name,
+      p_retailer_id:         null,
+      p_retailer_name:       storeName.trim(),
       p_requested_ship_date: requestedShipDate || null,
       p_retailer_notes:      notes || null,
       p_lines:               lines,
@@ -80,28 +72,10 @@ export default function OrderForm({ sheet, sheetDeals, retailers }: {
       <div className="bg-white border border-zinc-100 rounded-2xl p-6 space-y-4">
         <h2 className="text-sm font-medium text-zinc-700">Your store</h2>
 
-        {hasRetailers ? (
-          <div>
-            <label className="block text-xs text-zinc-500 mb-1.5 uppercase tracking-wide font-medium">Select your store</label>
-            <select className={input} value={retailerId} onChange={e => setRetailerId(e.target.value)}>
-              <option value="">— Select store —</option>
-              {retailers.map(r => (
-                <option key={r.retailer_id} value={r.retailer_id}>
-                  {(r.retailers as any)?.name ?? r.retailer_id}
-                </option>
-              ))}
-              <option value="other">Other / not listed</option>
-            </select>
-            {retailerId === "other" && (
-              <input className={`${input} mt-2`} value={storeName} onChange={e => setStoreName(e.target.value)} placeholder="Your store name" />
-            )}
-          </div>
-        ) : (
-          <div>
-            <label className="block text-xs text-zinc-500 mb-1.5 uppercase tracking-wide font-medium">Store name</label>
-            <input className={input} value={storeName} onChange={e => setStoreName(e.target.value)} placeholder="Green Cannabis Co." required />
-          </div>
-        )}
+        <div>
+          <label className="block text-xs text-zinc-500 mb-1.5 uppercase tracking-wide font-medium">Store name</label>
+          <input className={input} value={storeName} onChange={e => setStoreName(e.target.value)} placeholder="Green Cannabis Co." required />
+        </div>
 
         <div className="grid grid-cols-2 gap-4">
           <div>
