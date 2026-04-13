@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { createClient } from "@/lib/supabase/client"
-import { Check, ClipboardList, CheckCircle, XCircle } from "lucide-react"
+import { Check, ClipboardList, CheckCircle, XCircle, PackageCheck } from "lucide-react"
 import { useRouter } from "next/navigation"
 
 const STATUS_STYLES: Record<string, string> = {
@@ -27,7 +27,7 @@ export default function OrderReview({
 }) {
   const router = useRouter()
   const [orderLines, setOrderLines] = useState(initialLines)
-  const [acting, setActing] = useState<"accept" | "reject" | null>(null)
+  const [acting, setActing] = useState<"accept" | "reject" | "fulfill" | null>(null)
   const [copied, setCopied] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -47,6 +47,18 @@ export default function OrderReview({
     })
     if (error) { setError(error.message); setActing(null); return }
     setOrderLines(prev => prev.map(l => ({ ...l, status: "accepted" })))
+    setActing(null)
+  }
+
+  async function fulfill() {
+    setActing("fulfill"); setError(null)
+    const supabase = createClient()
+    const { error } = await supabase.rpc("fulfill_order", {
+      p_sheet_id: sheetId,
+      p_retailer_id: retailerId,
+    })
+    if (error) { setError(error.message); setActing(null); return }
+    setOrderLines(prev => prev.map(l => ({ ...l, status: "fulfilled" })))
     setActing(null)
   }
 
@@ -139,14 +151,30 @@ export default function OrderReview({
             )}
 
             {status === "accepted" && (
-              <button
-                onClick={copyForD365}
-                className="flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-lg bg-zinc-900 text-white hover:bg-zinc-800 transition-colors"
-              >
-                {copied
-                  ? <><Check size={14} className="text-emerald-400" /> Copied!</>
-                  : <><ClipboardList size={14} /> Copy for D365</>}
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={copyForD365}
+                  className="flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-lg border border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50 transition-colors"
+                >
+                  {copied
+                    ? <><Check size={14} className="text-emerald-500" /> Copied!</>
+                    : <><ClipboardList size={14} /> Copy for D365</>}
+                </button>
+                <button
+                  onClick={fulfill}
+                  disabled={!!acting}
+                  className="flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                >
+                  <PackageCheck size={14} />
+                  {acting === "fulfill" ? "Marking…" : "Mark as fulfilled"}
+                </button>
+              </div>
+            )}
+
+            {status === "fulfilled" && (
+              <span className="flex items-center gap-1.5 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-200 px-4 py-2 rounded-lg">
+                <PackageCheck size={14} /> Order fulfilled
+              </span>
             )}
           </div>
         </div>
@@ -240,19 +268,40 @@ export default function OrderReview({
 
       {/* D365 copy hint when accepted */}
       {status === "accepted" && (
-        <div className="bg-zinc-50 border border-zinc-100 rounded-xl px-5 py-4 flex items-center justify-between">
+        <div className="bg-zinc-50 border border-zinc-100 rounded-xl px-5 py-4 flex items-center justify-between gap-4 flex-wrap">
           <div>
             <p className="text-sm font-medium text-zinc-700">Ready to enter in D365</p>
-            <p className="text-xs text-zinc-400 mt-0.5">Click "Copy for D365" to copy a tab-separated table: SKU · Product · LP · Format · Price · Qty · Ship date</p>
+            <p className="text-xs text-zinc-400 mt-0.5">Copy the table, paste into D365, then mark as fulfilled once the order is shipped.</p>
           </div>
-          <button
-            onClick={copyForD365}
-            className="flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-lg bg-zinc-900 text-white hover:bg-zinc-800 transition-colors ml-4 flex-shrink-0"
-          >
-            {copied
-              ? <><Check size={14} className="text-emerald-400" /> Copied!</>
-              : <><ClipboardList size={14} /> Copy for D365</>}
-          </button>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              onClick={copyForD365}
+              className="flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-lg border border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50 transition-colors"
+            >
+              {copied
+                ? <><Check size={14} className="text-emerald-500" /> Copied!</>
+                : <><ClipboardList size={14} /> Copy for D365</>}
+            </button>
+            <button
+              onClick={fulfill}
+              disabled={!!acting}
+              className="flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
+            >
+              <PackageCheck size={14} />
+              {acting === "fulfill" ? "Marking…" : "Mark as fulfilled"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Fulfilled confirmation */}
+      {status === "fulfilled" && (
+        <div className="bg-blue-50 border border-blue-100 rounded-xl px-5 py-4 flex items-center gap-3">
+          <PackageCheck size={16} className="text-blue-600 flex-shrink-0" />
+          <div>
+            <p className="text-sm font-medium text-blue-900">Order fulfilled</p>
+            <p className="text-xs text-blue-600 mt-0.5">This order has been marked as shipped.</p>
+          </div>
         </div>
       )}
     </div>
