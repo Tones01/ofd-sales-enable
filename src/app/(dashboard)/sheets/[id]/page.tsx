@@ -12,13 +12,13 @@ export default async function SheetDetailPage({ params }: { params: { id: string
 
   const headersList = headers()
   const host = headersList.get("host") ?? "localhost:3000"
-  const protocol = host.startsWith("localhost") ? "http" : "https"
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? `${protocol}://${host}`
+  const proto = headersList.get("x-forwarded-proto") ??
+    (host.startsWith("localhost") || host.startsWith("127.") ? "http" : "https")
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? `${proto}://${host}`
 
-  const [{ data: sheet }, { data: allDeals }, { data: allRetailers }] = await Promise.all([
+  const [{ data: sheet }, { data: allDeals }] = await Promise.all([
     supabase.from("sheets").select("*, profiles(full_name)").eq("id", params.id).single(),
     supabase.from("deal_availability").select("*").eq("status", "active").order("lp_name"),
-    supabase.from("retailers").select("id, name, city, province, contact_name, contact_email").eq("status", "active").order("name"),
   ])
 
   if (!sheet) notFound()
@@ -73,7 +73,6 @@ export default async function SheetDetailPage({ params }: { params: { id: string
       <SheetBuilder
         sheet={sheet}
         allDeals={allDeals ?? []}
-        allRetailers={allRetailers ?? []}
         sheetDeals={sheetDeals ?? []}
         sheetRetailers={sheetRetailers ?? []}
         siteUrl={siteUrl}

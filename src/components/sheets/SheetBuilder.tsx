@@ -50,12 +50,11 @@ function groupOrderLines(lines: SheetRetailerRow[]) {
 }
 
 export default function SheetBuilder({
-  sheet, allDeals, allRetailers, sheetDeals: initialSheetDeals,
+  sheet, allDeals, sheetDeals: initialSheetDeals,
   sheetRetailers: initialSheetRetailers, siteUrl,
 }: {
   sheet: any
   allDeals: Deal[]
-  allRetailers: Retailer[]
   sheetDeals: SheetDeal[]
   sheetRetailers: SheetRetailerRow[]
   siteUrl: string
@@ -71,12 +70,9 @@ export default function SheetBuilder({
   const [saleOnly, setSaleOnly] = useState(false)
   const [selectedDealIds, setSelectedDealIds] = useState<Set<string>>(new Set())
 
-  // Retailer picker
-  const [selectedRetailerIds, setSelectedRetailerIds] = useState<Set<string>>(new Set())
-
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [copiedToken, setCopiedToken] = useState<string | null>(null)
+  const [linkCopied, setLinkCopied] = useState(false)
   const [d365Copied, setD365Copied] = useState<string | null>(null)
   const [acceptingKey, setAcceptingKey] = useState<string | null>(null)
   const [rejectingKey, setRejectingKey] = useState<string | null>(null)
@@ -84,17 +80,13 @@ export default function SheetBuilder({
   const isDraft = status === "draft"
   const isSent = status === "sent"
 
-  // Split into placeholder rows (send list) and order lines
-  const placeholders = sheetRetailers.filter(sr => !sr.deal_id)
+  // Order lines (deal_id IS NOT NULL) grouped by retailer
   const orderLines = sheetRetailers.filter(sr => sr.deal_id)
   const orderGroups = groupOrderLines(orderLines)
   const acceptedGroups = orderGroups.filter(g => g.status === "accepted")
 
   // Deals already on the sheet
   const dealIdsOnSheet = new Set(sheetDeals.map(sd => sd.deal_id))
-
-  // Retailers already on sheet (by retailer_id)
-  const retailerIdsOnSheet = new Set(placeholders.map(sr => sr.retailer_id).filter(Boolean))
 
   // Unique LP names / formats for filter
   const lpNames = Array.from(new Set(allDeals.map(d => d.lp_name))).sort()
@@ -129,36 +121,6 @@ export default function SheetBuilder({
     setSheetDeals(prev => prev.filter(sd => sd.id !== sheetDealId))
   }
 
-  async function addRetailers() {
-    if (!selectedRetailerIds.size) return
-    setSaving(true); setError(null)
-    const supabase = createClient()
-    const rows = Array.from(selectedRetailerIds).map(retailer_id => {
-      const retailer = allRetailers.find(r => r.id === retailer_id)
-      return { sheet_id: sheet.id, retailer_id, retailer_name: retailer?.name ?? "", status: "pending", alloc_qty: 0 }
-    })
-    const { data, error } = await supabase.from("sheet_retailers").insert(rows)
-      .select("id, retailer_id, retailer_name, deal_id, alloc_qty, status, requested_ship_date, retailer_notes, order_token, responded_at, retailers(id, name), deals(lp_name, brand, product_name, sku, format, thc, list_price, sale_price, units_per_case)")
-    if (error) { setError(error.message) }
-    else { setSheetRetailers(prev => [...prev, ...(data ?? [])]); setSelectedRetailerIds(new Set()) }
-    setSaving(false)
-  }
-
-  async function removeRetailer(placeholderId: string, retailerId: string | null) {
-    const supabase = createClient()
-    await supabase.from("sheet_retailers").delete().eq("id", placeholderId)
-    if (retailerId) {
-      await supabase.from("sheet_retailers")
-        .delete()
-        .eq("sheet_id", sheet.id)
-        .eq("retailer_id", retailerId)
-        .not("deal_id", "is", null)
-    }
-    setSheetRetailers(prev => prev.filter(sr =>
-      sr.id !== placeholderId && sr.retailer_id !== retailerId
-    ))
-  }
-
   async function saveShipDate() {
     const supabase = createClient()
     await supabase.from("sheets").update({ ship_date: shipDate || null }).eq("id", sheet.id)
@@ -166,7 +128,6 @@ export default function SheetBuilder({
 
   async function sendSheet() {
     if (!sheetDeals.length) { setError("Add at least one deal before sending."); return }
-    if (!placeholders.length) { setError("Add at least one retailer before sending."); return }
     setSaving(true); setError(null)
     const supabase = createClient()
     if (shipDate) await saveShipDate()
@@ -216,13 +177,13 @@ export default function SheetBuilder({
     setRejectingKey(null)
   }
 
-  async function copyRetailerLink(token: string) {
+  async function copyOrderLink() {
     try {
-      await navigator.clipboard.writeText(`${siteUrl}/order/r/${token}`)
-      setCopiedToken(token)
-      setTimeout(() => setCopiedToken(null), 2000)
+      await navigator.clipboard.writeText(`${siteUrl}/order/${sheet.id}`)
+      setLinkCopied(true)
+      setTimeout(() => setLinkCopied(false), 2500)
     } catch {
-      setError("Could not copy link — please copy it manually from your browser address bar.")
+      setError(`Could not copy — the link is: ${siteUrl}/order/${sheet.id}`)
     }
   }
 
@@ -262,6 +223,16 @@ export default function SheetBuilder({
           />
         </div>
         <div className="ml-auto flex items-center gap-2">
+          {isSent && (
+            <button
+              onClick={copyOrderLink}
+              className="flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-lg border border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50 transition-colors"
+            >
+              {linkCopied
+                ? <><Check size={13} className="text-emerald-500" /> Copied!</>
+                : <><Link2 size={13} /> Copy order link</>}
+            </button>
+          )}
           {isDraft && (
             <button onClick={sendSheet} disabled={saving} className="flex items-center gap-2 bg-zinc-900 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-zinc-800 disabled:opacity-50 transition-colors">
               <Send size={13} />
@@ -282,11 +253,8 @@ export default function SheetBuilder({
         </div>
       </div>
 
-      {/* ── Deals + Retailers grid ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-        {/* LEFT: Deals */}
-        <div className="space-y-4">
+      {/* ── Deals ── */}
+      <div className="space-y-4">
           <h2 className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Deals on this sheet</h2>
 
           <div className="bg-white border border-zinc-100 rounded-xl overflow-hidden">
@@ -379,113 +347,6 @@ export default function SheetBuilder({
               </button>
             </div>
           )}
-        </div>
-
-        {/* RIGHT: Retailers (send list with per-retailer links) */}
-        <div className="space-y-4">
-          <h2 className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Retailers on this sheet</h2>
-
-          <div className="bg-white border border-zinc-100 rounded-xl overflow-hidden">
-            {placeholders.length ? (
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-zinc-100 bg-zinc-50/50">
-                    <th className="text-left text-xs text-zinc-400 font-medium px-4 py-3">Store</th>
-                    {isSent && <th className="text-left text-xs text-zinc-400 font-medium px-4 py-3">Order</th>}
-                    {isSent && <th className="text-right text-xs text-zinc-400 font-medium px-4 py-3">Link</th>}
-                    {isDraft && <th className="px-3 py-3" />}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-50">
-                  {placeholders.map(sr => {
-                    const group = orderGroups.find(g => g.retailer_id === sr.retailer_id)
-                    return (
-                      <tr key={sr.id} className="group">
-                        <td className="px-4 py-3">
-                          <p className="font-medium text-zinc-900 text-sm">
-                            {(sr.retailers as any)?.name ?? sr.retailer_name ?? "—"}
-                          </p>
-                        </td>
-                        {isSent && (
-                          <td className="px-4 py-3">
-                            {group ? (
-                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_STYLES[group.status] ?? "bg-zinc-100 text-zinc-500"}`}>
-                                {group.status}
-                              </span>
-                            ) : (
-                              <span className="text-xs text-zinc-300">awaiting</span>
-                            )}
-                          </td>
-                        )}
-                        {isSent && (
-                          <td className="px-4 py-3 text-right">
-                            {sr.order_token && (
-                              <button
-                                onClick={() => copyRetailerLink(sr.order_token)}
-                                className="inline-flex items-center gap-1 text-xs text-zinc-400 hover:text-zinc-900 transition-colors"
-                                title="Copy order link for this retailer"
-                              >
-                                {copiedToken === sr.order_token
-                                  ? <><Check size={11} className="text-emerald-500" /> Copied</>
-                                  : <><Link2 size={11} /> Copy link</>
-                                }
-                              </button>
-                            )}
-                          </td>
-                        )}
-                        {isDraft && (
-                          <td className="px-3 py-3">
-                            <button onClick={() => removeRetailer(sr.id, sr.retailer_id)} className="text-zinc-300 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100">
-                              <Trash2 size={13} />
-                            </button>
-                          </td>
-                        )}
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            ) : (
-              <p className="text-sm text-zinc-400 p-5">No retailers added yet.</p>
-            )}
-          </div>
-
-          {isDraft && (
-            <div className="bg-zinc-50 border border-zinc-100 rounded-xl p-4 space-y-3">
-              <p className="text-xs font-medium text-zinc-500 uppercase tracking-wide">Add retailers</p>
-              <div className="max-h-56 overflow-y-auto space-y-1 pr-1">
-                {allRetailers.filter(r => !retailerIdsOnSheet.has(r.id)).length === 0 ? (
-                  <p className="text-xs text-zinc-400 py-2">All retailers already added.</p>
-                ) : allRetailers.filter(r => !retailerIdsOnSheet.has(r.id)).map(r => (
-                  <label key={r.id} className="flex items-center gap-2.5 p-2 rounded-lg hover:bg-white cursor-pointer transition-colors">
-                    <input
-                      type="checkbox"
-                      checked={selectedRetailerIds.has(r.id)}
-                      onChange={e => {
-                        const next = new Set(selectedRetailerIds)
-                        e.target.checked ? next.add(r.id) : next.delete(r.id)
-                        setSelectedRetailerIds(next)
-                      }}
-                      className="rounded flex-shrink-0"
-                    />
-                    <div className="min-w-0">
-                      <p className="text-xs font-medium text-zinc-800 truncate">{r.name}</p>
-                      {r.city && <p className="text-xs text-zinc-400">{[r.city, r.province].filter(Boolean).join(", ")}</p>}
-                    </div>
-                  </label>
-                ))}
-              </div>
-              <button
-                onClick={addRetailers}
-                disabled={!selectedRetailerIds.size || saving}
-                className="flex items-center gap-1.5 text-xs font-medium bg-zinc-900 text-white px-3 py-1.5 rounded-lg disabled:opacity-40 hover:bg-zinc-800 transition-colors"
-              >
-                <Plus size={12} />
-                Add {selectedRetailerIds.size > 0 ? `${selectedRetailerIds.size} retailer${selectedRetailerIds.size > 1 ? "s" : ""}` : "selected"}
-              </button>
-            </div>
-          )}
-        </div>
       </div>
 
       {/* ── Orders received ── */}
@@ -519,20 +380,20 @@ export default function SheetBuilder({
                     )}
                     {group.status === "pending" && group.retailer_id && (
                       <>
-                      <button
-                        onClick={() => acceptOrder(group.retailer_id!)}
-                        disabled={acceptingKey === group.retailer_id || rejectingKey === group.retailer_id}
-                        className="text-xs font-medium px-3 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition-colors"
-                      >
-                        {acceptingKey === group.retailer_id ? "Accepting…" : "Accept"}
-                      </button>
-                      <button
-                        onClick={() => rejectOrder(group.retailer_id!)}
-                        disabled={acceptingKey === group.retailer_id || rejectingKey === group.retailer_id}
-                        className="text-xs font-medium px-3 py-1.5 bg-white text-red-500 border border-red-200 rounded-lg hover:bg-red-50 disabled:opacity-50 transition-colors"
-                      >
-                        {rejectingKey === group.retailer_id ? "Rejecting…" : "Reject"}
-                      </button>
+                        <button
+                          onClick={() => acceptOrder(group.retailer_id!)}
+                          disabled={acceptingKey === group.retailer_id || rejectingKey === group.retailer_id}
+                          className="text-xs font-medium px-3 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition-colors"
+                        >
+                          {acceptingKey === group.retailer_id ? "Accepting…" : "Accept"}
+                        </button>
+                        <button
+                          onClick={() => rejectOrder(group.retailer_id!)}
+                          disabled={acceptingKey === group.retailer_id || rejectingKey === group.retailer_id}
+                          className="text-xs font-medium px-3 py-1.5 bg-white text-red-500 border border-red-200 rounded-lg hover:bg-red-50 disabled:opacity-50 transition-colors"
+                        >
+                          {rejectingKey === group.retailer_id ? "Rejecting…" : "Reject"}
+                        </button>
                       </>
                     )}
                   </div>
