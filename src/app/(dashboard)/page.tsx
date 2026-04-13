@@ -11,7 +11,7 @@ const STATUS_STYLES: Record<string, string> = {
 
 type OrderGroup = {
   sheetId: string
-  retailerId: string
+  retailerId: string | null
   retailerName: string
   sheet: any
   lines: Array<{ product_name: string; lp_name: string; alloc_qty: number }>
@@ -23,9 +23,6 @@ export const dynamic = "force-dynamic"
 
 export default async function DashboardPage() {
   const supabase = createClient()
-
-  const today = new Date().toISOString().slice(0, 10)
-  const in7Days = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
 
   const [
     { data: deals },
@@ -59,11 +56,14 @@ export default async function DashboardPage() {
   for (const row of (orderLinesRaw ?? [])) {
     const sheet = row.sheets as any
     if (sheet?.status !== "sent") continue
-    const key = `${row.sheet_id}-${row.retailer_id}`
+    // Use retailer_id if present; fall back to retailer_name for generic-form orders
+    const key = row.retailer_id
+      ? `${row.sheet_id}-${row.retailer_id}`
+      : `${row.sheet_id}-name:${row.retailer_name ?? "unknown"}`
     if (!groupMap.has(key)) {
       groupMap.set(key, {
         sheetId: row.sheet_id,
-        retailerId: row.retailer_id,
+        retailerId: row.retailer_id ?? null,
         retailerName: (row.retailers as any)?.name ?? row.retailer_name ?? "Unknown store",
         sheet,
         lines: [],
@@ -84,22 +84,32 @@ export default async function DashboardPage() {
   }
   const allOrderGroups = Array.from(groupMap.values())
 
-  // Split into this-week vs upcoming
-  const ordersThisWeek = allOrderGroups.filter(g =>
-    !g.sheet?.ship_date || g.sheet.ship_date <= in7Days
-  )
-  const ordersUpcoming = allOrderGroups.filter(g =>
-    g.sheet?.ship_date && g.sheet.ship_date > in7Days
-  )
+  // Active orders (pending + accepted) sorted by ship date — shown on dashboard
+  const activeOrders = allOrderGroups
+    .filter(g => g.status !== "fulfilled")
+    .sort((a, b) => {
+      if (!a.sheet?.ship_date) return -1
+      if (!b.sheet?.ship_date) return 1
+      return a.sheet.ship_date.localeCompare(b.sheet.ship_date)
+    })
+  const completedOrders = allOrderGroups.filter(g => g.status === "fulfilled")
 
-  // Pending orders (subset of ordersThisWeek, for the amber banner)
-  const pendingOrders = ordersThisWeek.filter(g => g.status === "pending").slice(0, 10)
+  // Pending orders banner — ALL pending (not just this week)
+  const pendingOrders = allOrderGroups.filter(g => g.status === "pending").slice(0, 10)
 
-  // Upcoming sheets (sent, no orders yet, ship > 7 days) — show as sheet cards
-  const upcoming = sentSheets.filter(s =>
-    (s as any).ship_date && (s as any).ship_date > in7Days &&
-    !ordersUpcoming.find(g => g.sheetId === s.id)
-  )
+  // Pipeline stats
+  const pendingGroups  = allOrderGroups.filter(g => g.status === "pending")
+  const acceptedGroups = allOrderGroups.filter(g => g.status === "accepted")
+  const fulfilledGroups = allOrderGroups.filter(g => g.status === "fulfilled")
+  const pendingUnits   = pendingGroups.reduce((s, g) => s + g.totalUnits, 0)
+  const acceptedUnits  = acceptedGroups.reduce((s, g) => s + g.totalUnits, 0)
+  const fulfilledUnits = fulfilledGroups.reduce((s, g) => s + g.totalUnits, 0)
+  const totalCapacity  = activeDeals.reduce((s, d) => s + d.qty_total, 0)
+  const totalCommitted = pendingUnits + acceptedUnits + fulfilledUnits
+  const fillPct = totalCapacity > 0 ? Math.round((totalCommitted / totalCapacity) * 100) : 0
+
+  // Sent sheets with no orders yet (informational)
+  const sheetsNoOrders = sentSheets.filter(s => !allOrderGroups.find(g => g.sheetId === s.id))
   // Draft sheets
   const draftSheets = sheets?.filter(s => s.status === "draft") ?? []
 
@@ -111,12 +121,45 @@ export default async function DashboardPage() {
       </div>
 
       {/* Stat cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <StatCard icon={Package} label="Units available" value={totalAvailable.toLocaleString()} />
         <StatCard icon={FileText} label="Sheets out" value={sentSheets.length.toString()} sub="awaiting retailer response" />
         <StatCard icon={Store} label="Active retailers" value={(retailers?.length ?? 0).toString()} />
         <StatCard icon={TrendingUp} label="Units committed" value={totalUnitsOut.toLocaleString()} sub="accepted + fulfilled" />
       </div>
+
+      {/* Pipeline bar */}
+      {allOrderGroups.length > 0 && (
+        <div className="bg-white border border-zinc-100 rounded-xl px-6 py-5 mb-8">
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <p className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Pipeline</p>
+            <p className="text-xs text-zinc-400">
+              {totalCommitted.toLocaleString()} / {totalCapacity.toLocaleString()} units committed
+              {fillPct >= 100 && <span className="ml-2 text-emerald-600 font-semibold">· Fully committed!</span>}
+            </p>
+          </div>
+          <div className="w-full bg-zinc-100 rounded-full h-2 mb-4 overflow-hidden">
+            <div
+              className="h-2 rounded-full transition-all duration-500"
+              style={{ width: `${Math.min(fillPct, 100)}%`, background: fillPct >= 100 ? "#059669" : fillPct >= 75 ? "#10b981" : "#34d399" }}
+            />
+          </div>
+          <div className="grid grid-cols-3 gap-4 text-center">
+            <div>
+              <p className="text-xl font-bold text-amber-600 tabular-nums">{pendingGroups.length}</p>
+              <p className="text-xs text-zinc-400 mt-0.5">{pendingUnits.toLocaleString()} units · Pending</p>
+            </div>
+            <div>
+              <p className="text-xl font-bold text-emerald-600 tabular-nums">{acceptedGroups.length}</p>
+              <p className="text-xs text-zinc-400 mt-0.5">{acceptedUnits.toLocaleString()} units · Accepted</p>
+            </div>
+            <div>
+              <p className="text-xl font-bold text-blue-600 tabular-nums">{fulfilledGroups.length}</p>
+              <p className="text-xs text-zinc-400 mt-0.5">{fulfilledUnits.toLocaleString()} units · Fulfilled</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Pending order reviews banner */}
       {pendingOrders.length > 0 && (
@@ -127,19 +170,22 @@ export default async function DashboardPage() {
             </h2>
           </div>
           <div className="divide-y divide-amber-50">
-            {pendingOrders.map(g => (
-              <Link
-                key={`${g.sheetId}-${g.retailerId}`}
-                href={`/orders/${g.sheetId}/${g.retailerId}`}
-                className="flex items-center justify-between px-5 py-3 hover:bg-amber-100/50 transition-colors"
-              >
-                <div>
-                  <p className="text-sm font-medium text-zinc-900">{g.retailerName}</p>
-                  <p className="text-xs text-zinc-500">{g.sheet?.name}{g.sheet?.ship_date ? ` · Ships ${g.sheet.ship_date}` : ""} · {g.totalUnits} units</p>
-                </div>
-                <span className="text-xs text-amber-600 font-medium">Review →</span>
-              </Link>
-            ))}
+            {pendingOrders.map(g => {
+              const href = g.retailerId ? `/orders/${g.sheetId}/${g.retailerId}` : `/sheets/${g.sheetId}`
+              return (
+                <Link
+                  key={`${g.sheetId}-${g.retailerId ?? g.retailerName}`}
+                  href={href}
+                  className="flex items-center justify-between px-5 py-3 hover:bg-amber-100/50 transition-colors"
+                >
+                  <div>
+                    <p className="text-sm font-medium text-zinc-900">{g.retailerName}</p>
+                    <p className="text-xs text-zinc-500">{g.sheet?.name}{g.sheet?.ship_date ? ` · Ships ${g.sheet.ship_date}` : ""} · {g.totalUnits} units</p>
+                  </div>
+                  <span className="text-xs text-amber-600 font-medium">Review →</span>
+                </Link>
+              )
+            })}
           </div>
         </div>
       )}
@@ -147,38 +193,38 @@ export default async function DashboardPage() {
       {/* Order sections */}
       <div className="space-y-6 mb-10">
 
-        {/* Orders this week */}
+        {/* All active orders */}
         <section>
-          <h2 className="text-xs font-medium text-zinc-400 uppercase tracking-wider mb-3">Orders this week</h2>
-          {ordersThisWeek.length === 0 ? (
-            <div className="bg-white border border-zinc-100 rounded-xl px-5 py-6 text-sm text-zinc-400">No orders received yet for this period.</div>
+          <h2 className="text-xs font-medium text-zinc-400 uppercase tracking-wider mb-3">Active orders</h2>
+          {activeOrders.length === 0 ? (
+            <div className="bg-white border border-zinc-100 rounded-xl px-5 py-6 text-sm text-zinc-400">No active orders. Send a sheet to start receiving orders.</div>
           ) : (
             <div className="space-y-3">
-              {ordersThisWeek.map(g => (
-                <OrderCard key={`${g.sheetId}-${g.retailerId}`} group={g} highlight />
+              {activeOrders.map(g => (
+                <OrderCard key={`${g.sheetId}-${g.retailerId ?? g.retailerName}`} group={g} />
               ))}
             </div>
           )}
         </section>
 
-        {/* Upcoming orders */}
-        {ordersUpcoming.length > 0 && (
+        {/* Completed orders */}
+        {completedOrders.length > 0 && (
           <section>
-            <h2 className="text-xs font-medium text-zinc-400 uppercase tracking-wider mb-3">Upcoming orders</h2>
-            <div className="space-y-3">
-              {ordersUpcoming.map(g => (
-                <OrderCard key={`${g.sheetId}-${g.retailerId}`} group={g} />
+            <h2 className="text-xs font-medium text-zinc-400 uppercase tracking-wider mb-3">Fulfilled</h2>
+            <div className="space-y-3 opacity-70">
+              {completedOrders.map(g => (
+                <OrderCard key={`${g.sheetId}-${g.retailerId ?? g.retailerName}`} group={g} />
               ))}
             </div>
           </section>
         )}
 
-        {/* Upcoming sheets (sent, no orders yet) */}
-        {upcoming.length > 0 && (
+        {/* Sent sheets with no orders yet */}
+        {sheetsNoOrders.length > 0 && (
           <section>
-            <h2 className="text-xs font-medium text-zinc-400 uppercase tracking-wider mb-3">Sheets out — no orders yet</h2>
+            <h2 className="text-xs font-medium text-zinc-400 uppercase tracking-wider mb-3">Sheets out — awaiting responses</h2>
             <div className="space-y-2">
-              {upcoming.map(s => (
+              {sheetsNoOrders.map(s => (
                 <SheetCard key={s.id} sheet={s} />
               ))}
             </div>
@@ -271,20 +317,20 @@ export default async function DashboardPage() {
   )
 }
 
-function OrderCard({ group, highlight = false }: { group: OrderGroup; highlight?: boolean }) {
+function OrderCard({ group }: { group: OrderGroup }) {
   const { sheetId, retailerId, retailerName, sheet, lines, totalUnits, status } = group
+  const href = retailerId ? `/orders/${sheetId}/${retailerId}` : `/sheets/${sheetId}`
   return (
     <Link
-      href={`/orders/${sheetId}/${retailerId}`}
-      className={`block px-5 py-4 rounded-xl border transition-colors hover:shadow-sm ${
-        highlight ? "bg-white border-zinc-200" : "bg-white border-zinc-100"
-      }`}
+      href={href}
+      className="block px-5 py-4 rounded-xl border bg-white border-zinc-100 transition-colors hover:border-zinc-200 hover:shadow-sm"
     >
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div className="min-w-0">
           <p className="font-semibold text-zinc-900">{retailerName}</p>
           <p className="text-xs text-zinc-400 mt-0.5">
             {sheet?.name}{sheet?.ship_date ? ` · Ships ${sheet.ship_date}` : ""}
+            {!retailerId && <span className="ml-2 text-zinc-300">· Direct submission</span>}
           </p>
           <div className="mt-2.5 flex flex-wrap gap-x-5 gap-y-1">
             {lines.map((line, i) => (
@@ -306,13 +352,10 @@ function OrderCard({ group, highlight = false }: { group: OrderGroup; highlight?
   )
 }
 
-function SheetCard({ sheet, highlight = false, ordersView = false }: { sheet: any; highlight?: boolean; ordersView?: boolean }) {
+function SheetCard({ sheet }: { sheet: any }) {
   const shipDate = (sheet as any).ship_date
-  const href = ordersView ? `/sheets/${sheet.id}/orders` : `/sheets/${sheet.id}`
   return (
-    <Link href={href} className={`flex items-center justify-between px-5 py-4 rounded-xl border transition-colors hover:shadow-sm ${
-      highlight ? "bg-white border-zinc-200" : "bg-white border-zinc-100"
-    }`}>
+    <Link href={`/sheets/${sheet.id}`} className="flex items-center justify-between px-5 py-4 rounded-xl border bg-white border-zinc-100 transition-colors hover:border-zinc-200 hover:shadow-sm">
       <div>
         <p className="font-medium text-zinc-900 text-sm">{sheet.name}</p>
         <p className="text-xs text-zinc-400 mt-0.5">
@@ -320,18 +363,13 @@ function SheetCard({ sheet, highlight = false, ordersView = false }: { sheet: an
           {shipDate ? ` · Ships ${shipDate}` : " · No ship date set"}
         </p>
       </div>
-      <div className="flex items-center gap-3">
-        {ordersView && (
-          <span className="text-xs text-zinc-400">View orders →</span>
-        )}
-        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
-          sheet.status === "draft" ? "bg-zinc-100 text-zinc-500" :
-          sheet.status === "sent"  ? "bg-blue-50 text-blue-700" :
-          "bg-zinc-50 text-zinc-400"
-        }`}>
-          {sheet.status}
-        </span>
-      </div>
+      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
+        sheet.status === "draft" ? "bg-zinc-100 text-zinc-500" :
+        sheet.status === "sent"  ? "bg-blue-50 text-blue-700" :
+        "bg-zinc-50 text-zinc-400"
+      }`}>
+        {sheet.status}
+      </span>
     </Link>
   )
 }

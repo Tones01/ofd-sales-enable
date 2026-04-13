@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { createClient } from "@/lib/supabase/client"
-import { Check, ClipboardList, CheckCircle, XCircle, PackageCheck } from "lucide-react"
+import { Check, ClipboardList, CheckCircle, XCircle, PackageCheck, Pencil } from "lucide-react"
 import { useRouter } from "next/navigation"
 
 const STATUS_STYLES: Record<string, string> = {
@@ -30,6 +30,10 @@ export default function OrderReview({
   const [acting, setActing] = useState<"accept" | "reject" | "fulfill" | null>(null)
   const [copied, setCopied] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Inline qty edit state
+  const [editingLineId, setEditingLineId] = useState<string | null>(null)
+  const [editQty, setEditQty] = useState("")
 
   const status = orderLines[0]?.status ?? "pending"
   const requestedShipDate = orderLines[0]?.requested_ship_date
@@ -70,29 +74,44 @@ export default function OrderReview({
       p_retailer_id: retailerId,
     })
     if (error) { setError(error.message); setActing(null); return }
-    setOrderLines(prev => prev.map(l => ({ ...l, status: "rejected" })))
     setActing(null)
+    router.push(`/sheets/${sheetId}`)
   }
 
-  function copyForD365() {
+  async function copyForD365() {
     const header = "SKU (Cova)\tProduct\tLP\tFormat\tPrice\tQty\tRequested Ship"
     const shipDate = requestedShipDate ?? (sheet as any).ship_date ?? ""
     const rows = orderLines.map(line => {
       const d = line.deals as any
       const price = d?.sale_price ?? d?.list_price ?? ""
-      return [
-        d?.sku ?? "",
-        d?.product_name ?? "",
-        d?.lp_name ?? "",
-        d?.format ?? "",
-        price,
-        line.alloc_qty,
-        shipDate,
-      ].join("\t")
+      return [d?.sku ?? "", d?.product_name ?? "", d?.lp_name ?? "", d?.format ?? "", price, line.alloc_qty, shipDate].join("\t")
     })
-    navigator.clipboard.writeText([header, ...rows].join("\n"))
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2500)
+    try {
+      await navigator.clipboard.writeText([header, ...rows].join("\n"))
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2500)
+    } catch {
+      setError("Copy failed — please select the table manually and copy it.")
+    }
+  }
+
+  function startEdit(lineId: string, currentQty: number) {
+    setEditingLineId(lineId)
+    setEditQty(String(currentQty))
+  }
+
+  async function saveLineQty(lineId: string) {
+    const num = parseInt(editQty, 10)
+    const original = orderLines.find(l => l.id === lineId)?.alloc_qty
+    setEditingLineId(null)
+    if (isNaN(num) || num < 0 || num === original) return
+    const supabase = createClient()
+    const { error } = await supabase
+      .from("sheet_retailers")
+      .update({ alloc_qty: num })
+      .eq("id", lineId)
+    if (error) { setError(error.message); return }
+    setOrderLines(prev => prev.map(l => l.id === lineId ? { ...l, alloc_qty: num } : l))
   }
 
   return (
@@ -107,13 +126,16 @@ export default function OrderReview({
             <div className="flex items-center gap-3 mt-2 text-sm text-zinc-500 flex-wrap">
               <span>Sheet: <span className="text-zinc-700 font-medium">{sheet.name}</span></span>
               {(sheet as any).ship_date && (
-                <><span className="text-zinc-200">·</span><span>Sheet ship date: {(sheet as any).ship_date}</span></>
+                <><span className="text-zinc-200">·</span><span>Ship date: {(sheet as any).ship_date}</span></>
               )}
               {requestedShipDate && (
                 <><span className="text-zinc-200">·</span><span className="text-zinc-900 font-medium">Requested: {requestedShipDate}</span></>
               )}
               {(sheet.profiles as any)?.full_name && (
                 <><span className="text-zinc-200">·</span><span>Rep: {(sheet.profiles as any).full_name}</span></>
+              )}
+              {respondedAt && (
+                <><span className="text-zinc-200">·</span><span>Submitted: {respondedAt.slice(0, 10)}</span></>
               )}
             </div>
             {retailerNotes && (
@@ -187,7 +209,10 @@ export default function OrderReview({
         <div className="px-6 py-4 border-b border-zinc-50 flex items-center justify-between">
           <div>
             <h2 className="text-sm font-medium text-zinc-700">Order lines</h2>
-            <p className="text-xs text-zinc-400 mt-0.5">{orderLines.length} product{orderLines.length !== 1 ? "s" : ""} · {totalUnits} total units</p>
+            <p className="text-xs text-zinc-400 mt-0.5">
+              {orderLines.length} product{orderLines.length !== 1 ? "s" : ""} · {totalUnits} total units
+              {status === "pending" && <span className="ml-2 text-zinc-300">· Click qty to adjust</span>}
+            </p>
           </div>
           {status === "accepted" && (
             <button
@@ -216,6 +241,7 @@ export default function OrderReview({
           <tbody className="divide-y divide-zinc-50">
             {orderLines.map(line => {
               const d = line.deals as any
+              const isEditing = editingLineId === line.id
               return (
                 <tr key={line.id} className="hover:bg-zinc-50/50 transition-colors">
                   <td className="px-6 py-3.5">
@@ -250,7 +276,30 @@ export default function OrderReview({
                     {d?.units_per_case ?? "—"}
                   </td>
                   <td className="px-6 py-3.5 text-right">
-                    <span className="font-semibold text-zinc-900 tabular-nums text-base">{line.alloc_qty}</span>
+                    {isEditing ? (
+                      <input
+                        type="number"
+                        min="0"
+                        value={editQty}
+                        onChange={e => setEditQty(e.target.value)}
+                        onBlur={() => saveLineQty(line.id)}
+                        onKeyDown={e => {
+                          if (e.key === "Enter") saveLineQty(line.id)
+                          if (e.key === "Escape") setEditingLineId(null)
+                        }}
+                        autoFocus
+                        className="w-20 text-right px-2 py-0.5 text-base font-semibold border border-zinc-400 rounded focus:outline-none focus:ring-1 focus:ring-zinc-900 tabular-nums"
+                      />
+                    ) : (
+                      <button
+                        onClick={() => startEdit(line.id, line.alloc_qty)}
+                        title="Click to adjust quantity"
+                        className="inline-flex items-center gap-1.5 font-semibold text-zinc-900 tabular-nums text-base group hover:text-zinc-600 transition-colors"
+                      >
+                        {line.alloc_qty}
+                        <Pencil size={11} className="text-zinc-300 group-hover:text-zinc-400 transition-colors" />
+                      </button>
+                    )}
                   </td>
                 </tr>
               )

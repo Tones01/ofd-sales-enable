@@ -216,23 +216,30 @@ export default function SheetBuilder({
     setRejectingKey(null)
   }
 
-  function copyRetailerLink(token: string) {
-    const url = `${siteUrl}/order/r/${token}`
-    navigator.clipboard.writeText(url)
-    setCopiedToken(token)
-    setTimeout(() => setCopiedToken(null), 2000)
+  async function copyRetailerLink(token: string) {
+    try {
+      await navigator.clipboard.writeText(`${siteUrl}/order/r/${token}`)
+      setCopiedToken(token)
+      setTimeout(() => setCopiedToken(null), 2000)
+    } catch {
+      setError("Could not copy link — please copy it manually from your browser address bar.")
+    }
   }
 
-  function copyD365(group: ReturnType<typeof groupOrderLines>[number]) {
+  async function copyD365(group: ReturnType<typeof groupOrderLines>[number]) {
     const header = "SKU\tProduct\tLP\tPrice\tQty"
     const rows = group.lines.map(line => {
       const d = line.deals as any
       const price = d?.sale_price ?? d?.list_price ?? ""
       return `${d?.sku ?? ""}\t${d?.product_name ?? ""}\t${d?.lp_name ?? ""}\t${price}\t${line.alloc_qty}`
     })
-    navigator.clipboard.writeText([header, ...rows].join("\n"))
-    setD365Copied(group.key)
-    setTimeout(() => setD365Copied(null), 2000)
+    try {
+      await navigator.clipboard.writeText([header, ...rows].join("\n"))
+      setD365Copied(group.key)
+      setTimeout(() => setD365Copied(null), 2000)
+    } catch {
+      setError("Copy failed — please select and copy the table manually.")
+    }
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -262,8 +269,14 @@ export default function SheetBuilder({
             </button>
           )}
           {(isDraft || isSent) && (
-            <button onClick={archiveSheet} disabled={saving} className="text-sm text-zinc-400 hover:text-zinc-700 px-3 py-2 rounded-lg hover:bg-zinc-100 transition-colors">
+            <button
+              onClick={archiveSheet}
+              disabled={saving}
+              title="Archive this sheet — public order links will stop working"
+              className="flex items-center gap-1.5 text-sm text-zinc-400 hover:text-zinc-700 px-3 py-2 rounded-lg hover:bg-zinc-100 transition-colors"
+            >
               <Archive size={14} />
+              <span className="hidden sm:inline">Archive</span>
             </button>
           )}
         </div>
