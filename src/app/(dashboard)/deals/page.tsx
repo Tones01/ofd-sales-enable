@@ -3,6 +3,7 @@ import Link from "next/link"
 import { Plus, Pencil } from "lucide-react"
 import EditableQty from "@/components/deals/EditableQty"
 import EditablePrice from "@/components/deals/EditablePrice"
+import ExportDealsButton from "@/components/deals/ExportDealsButton"
 
 export const dynamic = "force-dynamic"
 
@@ -16,6 +17,7 @@ export default async function DealsPage() {
   ])
 
   const isAdmin = profile?.role === "admin"
+  const today = new Date().toISOString().slice(0, 10)
 
   return (
     <div className="px-8 py-8 max-w-6xl mx-auto">
@@ -24,15 +26,18 @@ export default async function DealsPage() {
           <h1 className="font-serif text-2xl text-zinc-900">Deals</h1>
           <p className="text-sm text-zinc-400 mt-1">{deals?.length ?? 0} LP deals — quantities in units</p>
         </div>
-        {isAdmin && (
-          <Link
-            href="/deals/new"
-            className="flex items-center gap-2 bg-zinc-900 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-zinc-800 transition-colors"
-          >
-            <Plus size={14} />
-            New deal
-          </Link>
-        )}
+        <div className="flex items-center gap-2">
+          <ExportDealsButton />
+          {isAdmin && (
+            <Link
+              href="/deals/new"
+              className="flex items-center gap-2 bg-zinc-900 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-zinc-800 transition-colors"
+            >
+              <Plus size={14} />
+              New deal
+            </Link>
+          )}
+        </div>
       </div>
 
       <div className="bg-white border border-zinc-100 rounded-xl overflow-hidden">
@@ -65,10 +70,20 @@ export default async function DealsPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-50">
-            {deals?.map(deal => (
-              <tr key={deal.id} className="hover:bg-zinc-50/60 transition-colors group">
+            {deals?.map(deal => {
+              const expiry = (deal as any).deal_expiry as string | null
+              const isExpired = expiry != null && expiry < today && deal.status === "active"
+              return (
+              <tr key={deal.id} className={`transition-colors group ${isExpired ? "bg-red-50/40 hover:bg-red-50/60" : "hover:bg-zinc-50/60"}`}>
                 <td className="px-5 py-4">
-                  <p className="font-medium text-zinc-900">{deal.product_name}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-medium text-zinc-900">{deal.product_name}</p>
+                    {isExpired && (
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-red-100 text-red-600">
+                        Expired
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs text-zinc-400 mt-0.5">
                     {(deal as any).brand ? `${(deal as any).brand} · ` : ""}{deal.lp_name} · {deal.sku}
                   </p>
@@ -132,7 +147,8 @@ export default async function DealsPage() {
                   </td>
                 )}
               </tr>
-            ))}
+              )
+            })}
           </tbody>
         </table>
 
