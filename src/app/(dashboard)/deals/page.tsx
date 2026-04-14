@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server"
 import Link from "next/link"
 import { Plus, Pencil } from "lucide-react"
 import EditableQty from "@/components/deals/EditableQty"
+import EditablePrice from "@/components/deals/EditablePrice"
 
 export const dynamic = "force-dynamic"
 
@@ -74,13 +75,17 @@ export default async function DealsPage() {
                 </td>
                 <td className="px-5 py-4 text-zinc-500 text-sm hidden lg:table-cell">{(deal as any).format ?? "—"}</td>
                 <td className="px-5 py-4 text-zinc-500 text-sm hidden xl:table-cell">{(deal as any).thc ?? "—"}</td>
-                <td className="px-5 py-4 text-right text-zinc-500 hidden xl:table-cell">
-                  {(deal as any).list_price != null ? `$${Number((deal as any).list_price).toFixed(2)}` : "—"}
+                <td className="px-5 py-4 text-right hidden xl:table-cell">
+                  {isAdmin
+                    ? <EditablePrice dealId={deal.id} field="list_price" value={(deal as any).list_price ?? null} />
+                    : (deal as any).list_price != null ? `$${Number((deal as any).list_price).toFixed(2)}` : "—"}
                 </td>
                 <td className="px-5 py-4 text-right hidden xl:table-cell">
-                  {(deal as any).sale_price != null
-                    ? <span className="text-emerald-600 font-medium">${Number((deal as any).sale_price).toFixed(2)}</span>
-                    : <span className="text-zinc-400">—</span>}
+                  {isAdmin
+                    ? <EditablePrice dealId={deal.id} field="sale_price" value={(deal as any).sale_price ?? null} />
+                    : (deal as any).sale_price != null
+                      ? <span className="text-emerald-600 font-medium">${Number((deal as any).sale_price).toFixed(2)}</span>
+                      : <span className="text-zinc-400">—</span>}
                 </td>
                 <td className="px-5 py-4 text-right text-zinc-500 tabular-nums hidden lg:table-cell">
                   {(deal as any).units_per_case != null ? (deal as any).units_per_case : "—"}
