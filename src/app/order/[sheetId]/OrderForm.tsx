@@ -78,7 +78,15 @@ export default function OrderForm({ sheet, sheetDeals }: {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form
+      onSubmit={handleSubmit}
+      onKeyDown={e => {
+        if (e.key === "Enter" && (e.target as HTMLElement).tagName !== "BUTTON") {
+          e.preventDefault()
+        }
+      }}
+      className="space-y-6"
+    >
 
       {/* Store info */}
       <div className="bg-white border border-zinc-100 rounded-2xl p-6 space-y-4">
