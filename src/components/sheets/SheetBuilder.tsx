@@ -65,7 +65,9 @@ export default function SheetBuilder({
   const [shipDate, setShipDate] = useState((sheet as any).ship_date ?? "")
 
   // Deal picker state
+  const [searchQuery, setSearchQuery] = useState("")
   const [lpFilter, setLpFilter] = useState("")
+  const [brandFilter, setBrandFilter] = useState("")
   const [formatFilter, setFormatFilter] = useState("")
   const [saleOnly, setSaleOnly] = useState(false)
   const [selectedDealIds, setSelectedDealIds] = useState<Set<string>>(new Set())
@@ -88,17 +90,43 @@ export default function SheetBuilder({
   // Deals already on the sheet
   const dealIdsOnSheet = new Set(sheetDeals.map(sd => sd.deal_id))
 
-  // Unique LP names / formats for filter
+  // Unique values for filter dropdowns
   const lpNames = Array.from(new Set(allDeals.map(d => d.lp_name))).sort()
+  const brands  = Array.from(new Set(allDeals.map(d => (d as any).brand).filter(Boolean))).sort()
   const formats = Array.from(new Set(allDeals.map(d => d.format).filter(Boolean))).sort()
 
   const filteredDeals = allDeals.filter(d => {
     if (dealIdsOnSheet.has(d.id)) return false
     if (lpFilter && d.lp_name !== lpFilter) return false
+    if (brandFilter && (d as any).brand !== brandFilter) return false
     if (formatFilter && d.format !== formatFilter) return false
     if (saleOnly && !d.sale_price) return false
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase()
+      const match =
+        d.product_name?.toLowerCase().includes(q) ||
+        d.lp_name?.toLowerCase().includes(q) ||
+        (d as any).brand?.toLowerCase().includes(q) ||
+        d.sku?.toLowerCase().includes(q)
+      if (!match) return false
+    }
     return true
   })
+
+  const allFilteredSelected =
+    filteredDeals.length > 0 && filteredDeals.every(d => selectedDealIds.has(d.id))
+
+  function toggleSelectAll() {
+    if (allFilteredSelected) {
+      const next = new Set(selectedDealIds)
+      filteredDeals.forEach(d => next.delete(d.id))
+      setSelectedDealIds(next)
+    } else {
+      const next = new Set(selectedDealIds)
+      filteredDeals.forEach(d => next.add(d.id))
+      setSelectedDealIds(next)
+    }
+  }
 
   // ── Actions ──────────────────────────────────────────────────────────────
 
@@ -298,53 +326,141 @@ export default function SheetBuilder({
           </div>
 
           {isDraft && (
-            <div className="bg-zinc-50 border border-zinc-100 rounded-xl p-4 space-y-3">
-              <p className="text-xs font-medium text-zinc-500 uppercase tracking-wide">Add deals</p>
-              <div className="flex gap-2 flex-wrap">
+            <div className="bg-white border border-zinc-100 rounded-xl overflow-hidden">
+              {/* Filter bar */}
+              <div className="px-4 py-3 border-b border-zinc-100 bg-zinc-50/50 flex flex-wrap items-center gap-2">
+                <p className="text-xs font-medium text-zinc-500 uppercase tracking-wide mr-1">Add deals</p>
+                <input
+                  type="text"
+                  placeholder="Search product, LP, SKU…"
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  className="text-xs border border-zinc-200 bg-white rounded-lg px-2.5 py-1.5 text-zinc-700 placeholder:text-zinc-300 focus:outline-none focus:ring-1 focus:ring-zinc-900 w-44"
+                />
                 <select value={lpFilter} onChange={e => setLpFilter(e.target.value)} className="text-xs border border-zinc-200 bg-white rounded-lg px-2.5 py-1.5 text-zinc-700 focus:outline-none focus:ring-1 focus:ring-zinc-900">
-                  <option value="">All LPs</option>
+                  <option value="">All producers</option>
                   {lpNames.map(lp => <option key={lp} value={lp}>{lp}</option>)}
                 </select>
+                {brands.length > 0 && (
+                  <select value={brandFilter} onChange={e => setBrandFilter(e.target.value)} className="text-xs border border-zinc-200 bg-white rounded-lg px-2.5 py-1.5 text-zinc-700 focus:outline-none focus:ring-1 focus:ring-zinc-900">
+                    <option value="">All brands</option>
+                    {brands.map(b => <option key={b} value={b}>{b}</option>)}
+                  </select>
+                )}
                 <select value={formatFilter} onChange={e => setFormatFilter(e.target.value)} className="text-xs border border-zinc-200 bg-white rounded-lg px-2.5 py-1.5 text-zinc-700 focus:outline-none focus:ring-1 focus:ring-zinc-900">
                   <option value="">All formats</option>
                   {formats.map(f => <option key={f} value={f}>{f}</option>)}
                 </select>
-                <label className="flex items-center gap-1.5 text-xs text-zinc-600 cursor-pointer">
+                <label className="flex items-center gap-1.5 text-xs text-zinc-600 cursor-pointer select-none">
                   <input type="checkbox" checked={saleOnly} onChange={e => setSaleOnly(e.target.checked)} className="rounded" />
-                  Sale price only
+                  Sale only
                 </label>
+                {(searchQuery || lpFilter || brandFilter || formatFilter || saleOnly) && (
+                  <button
+                    onClick={() => { setSearchQuery(""); setLpFilter(""); setBrandFilter(""); setFormatFilter(""); setSaleOnly(false) }}
+                    className="text-xs text-zinc-400 hover:text-zinc-700 transition-colors"
+                  >
+                    Clear
+                  </button>
+                )}
+                <div className="ml-auto">
+                  <button
+                    onClick={addDeals}
+                    disabled={!selectedDealIds.size || saving}
+                    className="flex items-center gap-1.5 text-xs font-medium bg-zinc-900 text-white px-3 py-1.5 rounded-lg disabled:opacity-40 hover:bg-zinc-800 transition-colors"
+                  >
+                    <Plus size={12} />
+                    Add {selectedDealIds.size > 0 ? `${selectedDealIds.size} deal${selectedDealIds.size > 1 ? "s" : ""}` : "selected"}
+                  </button>
+                </div>
               </div>
-              <div className="max-h-56 overflow-y-auto space-y-1 pr-1">
+
+              {/* Scrollable deal table */}
+              <div className="max-h-80 overflow-y-auto">
                 {filteredDeals.length === 0 ? (
-                  <p className="text-xs text-zinc-400 py-2">No deals match filters.</p>
-                ) : filteredDeals.map(d => (
-                  <label key={d.id} className="flex items-center gap-2.5 p-2 rounded-lg hover:bg-white cursor-pointer transition-colors">
-                    <input
-                      type="checkbox"
-                      checked={selectedDealIds.has(d.id)}
-                      onChange={e => {
-                        const next = new Set(selectedDealIds)
-                        e.target.checked ? next.add(d.id) : next.delete(d.id)
-                        setSelectedDealIds(next)
-                      }}
-                      className="rounded flex-shrink-0"
-                    />
-                    <div className="min-w-0">
-                      <p className="text-xs font-medium text-zinc-800 truncate">{d.product_name}</p>
-                      <p className="text-xs text-zinc-400">{d.lp_name}{d.format ? ` · ${d.format}` : ""} · {d.qty_available} avail.</p>
-                    </div>
-                    {d.sale_price && <span className="ml-auto text-xs text-emerald-600 font-medium flex-shrink-0">${Number(d.sale_price).toFixed(2)}</span>}
-                  </label>
-                ))}
+                  <p className="text-xs text-zinc-400 px-5 py-6">No deals match your filters.</p>
+                ) : (
+                  <table className="w-full text-xs">
+                    <thead className="sticky top-0 bg-white border-b border-zinc-100 z-10">
+                      <tr>
+                        <th className="px-4 py-2.5 w-8">
+                          <input
+                            type="checkbox"
+                            checked={allFilteredSelected}
+                            onChange={toggleSelectAll}
+                            className="rounded"
+                            title="Select all"
+                          />
+                        </th>
+                        <th className="text-left text-zinc-400 font-medium px-3 py-2.5">Product</th>
+                        <th className="text-left text-zinc-400 font-medium px-3 py-2.5 hidden lg:table-cell">Brand</th>
+                        <th className="text-left text-zinc-400 font-medium px-3 py-2.5 hidden md:table-cell">Producer</th>
+                        <th className="text-left text-zinc-400 font-medium px-3 py-2.5 hidden lg:table-cell">Format</th>
+                        <th className="text-left text-zinc-400 font-medium px-3 py-2.5 hidden xl:table-cell">THC</th>
+                        <th className="text-right text-zinc-400 font-medium px-3 py-2.5">Price</th>
+                        <th className="text-right text-zinc-400 font-medium px-3 py-2.5 hidden lg:table-cell">Per case</th>
+                        <th className="text-right text-zinc-400 font-medium px-3 py-2.5">Avail.</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-50">
+                      {filteredDeals.map(d => {
+                        const checked = selectedDealIds.has(d.id)
+                        return (
+                          <tr
+                            key={d.id}
+                            onClick={() => {
+                              const next = new Set(selectedDealIds)
+                              checked ? next.delete(d.id) : next.add(d.id)
+                              setSelectedDealIds(next)
+                            }}
+                            className={`cursor-pointer transition-colors ${checked ? "bg-zinc-900/[0.03]" : "hover:bg-zinc-50"}`}
+                          >
+                            <td className="px-4 py-2.5" onClick={e => e.stopPropagation()}>
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={e => {
+                                  const next = new Set(selectedDealIds)
+                                  e.target.checked ? next.add(d.id) : next.delete(d.id)
+                                  setSelectedDealIds(next)
+                                }}
+                                className="rounded"
+                              />
+                            </td>
+                            <td className="px-3 py-2.5">
+                              <p className="font-medium text-zinc-900 truncate max-w-[180px]">{d.product_name}</p>
+                              <p className="text-zinc-400">{d.sku}</p>
+                            </td>
+                            <td className="px-3 py-2.5 text-zinc-500 hidden lg:table-cell">{(d as any).brand ?? "—"}</td>
+                            <td className="px-3 py-2.5 text-zinc-500 hidden md:table-cell">{d.lp_name}</td>
+                            <td className="px-3 py-2.5 text-zinc-500 hidden lg:table-cell">{d.format ?? "—"}</td>
+                            <td className="px-3 py-2.5 text-zinc-500 hidden xl:table-cell">{(d as any).thc ?? "—"}</td>
+                            <td className="px-3 py-2.5 text-right">
+                              {d.sale_price != null
+                                ? <span className="text-emerald-600 font-medium">${Number(d.sale_price).toFixed(2)}</span>
+                                : d.list_price != null
+                                ? <span className="text-zinc-600">${Number(d.list_price).toFixed(2)}</span>
+                                : <span className="text-zinc-300">—</span>}
+                            </td>
+                            <td className="px-3 py-2.5 text-right text-zinc-500 hidden lg:table-cell">{(d as any).units_per_case ?? "—"}</td>
+                            <td className="px-3 py-2.5 text-right font-medium text-zinc-700 tabular-nums">{d.qty_available.toLocaleString()}</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                )}
               </div>
-              <button
-                onClick={addDeals}
-                disabled={!selectedDealIds.size || saving}
-                className="flex items-center gap-1.5 text-xs font-medium bg-zinc-900 text-white px-3 py-1.5 rounded-lg disabled:opacity-40 hover:bg-zinc-800 transition-colors"
-              >
-                <Plus size={12} />
-                Add {selectedDealIds.size > 0 ? `${selectedDealIds.size} deal${selectedDealIds.size > 1 ? "s" : ""}` : "selected"}
-              </button>
+
+              {/* Footer count */}
+              {filteredDeals.length > 0 && (
+                <div className="px-4 py-2 border-t border-zinc-50 bg-zinc-50/30 flex items-center justify-between">
+                  <p className="text-xs text-zinc-400">
+                    {filteredDeals.length} deal{filteredDeals.length !== 1 ? "s" : ""} shown
+                    {selectedDealIds.size > 0 && <span className="ml-2 font-medium text-zinc-700">· {selectedDealIds.size} selected</span>}
+                  </p>
+                </div>
+              )}
             </div>
           )}
       </div>
