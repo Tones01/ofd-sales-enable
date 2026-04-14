@@ -33,9 +33,21 @@ export default function OrderForm({ sheet, sheetDeals }: {
       .map(sd => ({
         deal_id: sd.deal_id,
         alloc_qty: parseInt(qtys[sd.id], 10),
+        units_per_case: (sd.deals as any)?.units_per_case ?? null,
+        product_name: (sd.deals as any)?.product_name ?? "",
       }))
 
     if (!lines.length) { setError("Please enter a quantity for at least one product."); return }
+
+    // Validate case multiples
+    for (const line of lines) {
+      if (line.units_per_case && line.alloc_qty % line.units_per_case !== 0) {
+        setError(
+          `"${line.product_name}" must be ordered in multiples of ${line.units_per_case} (cases of ${line.units_per_case}). You entered ${line.alloc_qty}.`
+        )
+        return
+      }
+    }
 
     setSubmitting(true)
     const supabase = createClient()
@@ -93,7 +105,7 @@ export default function OrderForm({ sheet, sheetDeals }: {
       <div className="bg-white border border-zinc-100 rounded-2xl overflow-hidden">
         <div className="px-6 py-4 border-b border-zinc-50">
           <h2 className="text-sm font-medium text-zinc-700">Products — enter quantities below</h2>
-          <p className="text-xs text-zinc-400 mt-0.5">All quantities in units. Leave blank to skip a product.</p>
+          <p className="text-xs text-zinc-400 mt-0.5">Enter quantities in full cases. Leave blank to skip a product.</p>
         </div>
 
         <table className="w-full text-sm">
@@ -136,14 +148,33 @@ export default function OrderForm({ sheet, sheetDeals }: {
                     {d?.units_per_case ?? "—"}
                   </td>
                   <td className="px-6 py-4">
-                    <input
-                      type="number"
-                      min="0"
-                      placeholder="0"
-                      value={qtys[sd.id] ?? ""}
-                      onChange={e => setQty(sd.id, e.target.value)}
-                      className="w-full text-right px-3 py-1.5 text-sm border border-zinc-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900 tabular-nums"
-                    />
+                    {(() => {
+                      const upc: number | null = d?.units_per_case ?? null
+                      const qty = parseInt(qtys[sd.id] ?? "0", 10)
+                      const cases = upc && qty > 0 ? qty / upc : null
+                      return (
+                        <div className="space-y-1">
+                          <input
+                            type="number"
+                            min="0"
+                            step={upc ?? 1}
+                            placeholder="0"
+                            value={qtys[sd.id] ?? ""}
+                            onChange={e => setQty(sd.id, e.target.value)}
+                            className="w-full text-right px-3 py-1.5 text-sm border border-zinc-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900 tabular-nums"
+                          />
+                          {upc && (
+                            <p className="text-right text-xs text-zinc-400 tabular-nums">
+                              {cases !== null && Number.isInteger(cases)
+                                ? <span className="text-emerald-600 font-medium">{cases} case{cases !== 1 ? "s" : ""}</span>
+                                : cases !== null
+                                ? <span className="text-red-500">not a full case</span>
+                                : `cases of ${upc}`}
+                            </p>
+                          )}
+                        </div>
+                      )
+                    })()}
                   </td>
                 </tr>
               )
