@@ -14,8 +14,9 @@ type OrderGroup = {
   retailerId: string | null
   retailerName: string
   sheet: any
-  lines: Array<{ product_name: string; lp_name: string; alloc_qty: number }>
+  lines: Array<{ product_name: string; lp_name: string; alloc_qty: number; lineValue: number }>
   totalUnits: number
+  totalValue: number
   status: string
 }
 
@@ -40,7 +41,7 @@ export default async function DashboardPage() {
     supabase.from("rep_stats").select("*"),
     // All active order lines (pending / accepted / fulfilled) with deal + retailer + sheet info
     supabase.from("sheet_retailers")
-      .select("sheet_id, retailer_id, retailer_name, alloc_qty, status, retailers(name), deals(product_name, lp_name), sheets(id, name, ship_date, status)")
+      .select("sheet_id, retailer_id, retailer_name, alloc_qty, status, retailers(name), deals(product_name, lp_name, sale_price, list_price), sheets(id, name, ship_date, status)")
       .in("status", ["pending", "accepted", "fulfilled"])
       .not("deal_id", "is", null)
       .order("created_at", { ascending: true }),
@@ -68,16 +69,21 @@ export default async function DashboardPage() {
         sheet,
         lines: [],
         totalUnits: 0,
+        totalValue: 0,
         status: row.status,
       })
     }
     const g = groupMap.get(key)!
+    const price = (row.deals as any)?.sale_price ?? (row.deals as any)?.list_price ?? 0
+    const lineValue = row.alloc_qty * Number(price)
     g.lines.push({
       product_name: (row.deals as any)?.product_name ?? "—",
       lp_name: (row.deals as any)?.lp_name ?? "",
       alloc_qty: row.alloc_qty,
+      lineValue,
     })
     g.totalUnits += row.alloc_qty
+    g.totalValue += lineValue
     // Escalate status: fulfilled > accepted > pending
     if (g.status === "pending" && (row.status === "accepted" || row.status === "fulfilled")) g.status = row.status
     if (g.status === "accepted" && row.status === "fulfilled") g.status = row.status
@@ -104,6 +110,13 @@ export default async function DashboardPage() {
   const pendingUnits   = pendingGroups.reduce((s, g) => s + g.totalUnits, 0)
   const acceptedUnits  = acceptedGroups.reduce((s, g) => s + g.totalUnits, 0)
   const fulfilledUnits = fulfilledGroups.reduce((s, g) => s + g.totalUnits, 0)
+  const pendingValue   = pendingGroups.reduce((s, g) => s + g.totalValue, 0)
+  const acceptedValue  = acceptedGroups.reduce((s, g) => s + g.totalValue, 0)
+  const fulfilledValue = fulfilledGroups.reduce((s, g) => s + g.totalValue, 0)
+
+  function fmt$(n: number) {
+    return `$${Math.round(n).toLocaleString("en-CA")}`
+  }
   const totalCapacity  = activeDeals.reduce((s, d) => s + d.qty_total, 0)
   const totalCommitted = pendingUnits + acceptedUnits + fulfilledUnits
   const fillPct = totalCapacity > 0 ? Math.round((totalCommitted / totalCapacity) * 100) : 0
@@ -148,14 +161,17 @@ export default async function DashboardPage() {
             <div>
               <p className="text-xl font-bold text-amber-600 tabular-nums">{pendingGroups.length}</p>
               <p className="text-xs text-zinc-400 mt-0.5">{pendingUnits.toLocaleString()} units · Pending</p>
+              {pendingValue > 0 && <p className="text-xs font-medium text-amber-600 mt-0.5">{fmt$(pendingValue)}</p>}
             </div>
             <div>
               <p className="text-xl font-bold text-emerald-600 tabular-nums">{acceptedGroups.length}</p>
               <p className="text-xs text-zinc-400 mt-0.5">{acceptedUnits.toLocaleString()} units · Accepted</p>
+              {acceptedValue > 0 && <p className="text-xs font-medium text-emerald-600 mt-0.5">{fmt$(acceptedValue)}</p>}
             </div>
             <div>
               <p className="text-xl font-bold text-blue-600 tabular-nums">{fulfilledGroups.length}</p>
               <p className="text-xs text-zinc-400 mt-0.5">{fulfilledUnits.toLocaleString()} units · Fulfilled</p>
+              {fulfilledValue > 0 && <p className="text-xs font-medium text-blue-600 mt-0.5">{fmt$(fulfilledValue)}</p>}
             </div>
           </div>
         </div>
@@ -318,7 +334,7 @@ export default async function DashboardPage() {
 }
 
 function OrderCard({ group }: { group: OrderGroup }) {
-  const { sheetId, retailerId, retailerName, sheet, lines, totalUnits, status } = group
+  const { sheetId, retailerId, retailerName, sheet, lines, totalUnits, totalValue, status } = group
   const href = retailerId ? `/orders/${sheetId}/${retailerId}` : `/sheets/${sheetId}`
   return (
     <Link
@@ -345,6 +361,9 @@ function OrderCard({ group }: { group: OrderGroup }) {
             {status === "fulfilled" && <PackageCheck size={11} className="mr-1" />}
             {status.charAt(0).toUpperCase() + status.slice(1)}
           </span>
+          {totalValue > 0
+            ? <p className="text-sm font-semibold text-zinc-900 tabular-nums">${Math.round(totalValue).toLocaleString("en-CA")}</p>
+            : null}
           <p className="text-xs text-zinc-400 tabular-nums">{totalUnits} unit{totalUnits !== 1 ? "s" : ""}</p>
         </div>
       </div>

@@ -13,7 +13,7 @@ type OrderLine = {
   retailer_name: string | null
   sheet_id: string
   retailers: { id: string; name: string } | null
-  deals: { product_name: string; lp_name: string } | null
+  deals: { product_name: string; lp_name: string; sale_price: number | null; list_price: number | null } | null
   sheets: { id: string; name: string; ship_date: string | null } | null
 }
 
@@ -26,6 +26,7 @@ type OrderGroup = {
   shipDate: string | null
   products: string[]
   totalUnits: number
+  totalValue: number
   status: string
 }
 
@@ -49,6 +50,7 @@ function buildGroups(rows: OrderLine[]): OrderGroup[] {
         shipDate: (row.sheets as any)?.ship_date ?? row.requested_ship_date,
         products: [],
         totalUnits: 0,
+        totalValue: 0,
         status: row.status,
       })
     }
@@ -59,6 +61,8 @@ function buildGroups(rows: OrderLine[]): OrderGroup[] {
       group.products.push(productLabel)
     }
     group.totalUnits += row.alloc_qty ?? 0
+    const price = (row.deals as any)?.sale_price ?? (row.deals as any)?.list_price ?? 0
+    group.totalValue += (row.alloc_qty ?? 0) * Number(price)
   }
 
   return Array.from(map.values())
@@ -102,6 +106,7 @@ function GroupTable({ groups, emptyLabel }: { groups: OrderGroup[]; emptyLabel: 
           <th className="text-left text-xs text-zinc-400 font-medium px-5 py-3 hidden md:table-cell">Sheet</th>
           <th className="text-left text-xs text-zinc-400 font-medium px-5 py-3 hidden lg:table-cell">Products</th>
           <th className="text-right text-xs text-zinc-400 font-medium px-5 py-3">Units</th>
+          <th className="text-right text-xs text-zinc-400 font-medium px-5 py-3 hidden sm:table-cell">Value</th>
           <th className="text-right text-xs text-zinc-400 font-medium px-5 py-3 hidden sm:table-cell">Ships</th>
           <th className="text-right text-xs text-zinc-400 font-medium px-5 py-3"></th>
         </tr>
@@ -145,6 +150,9 @@ function GroupTable({ groups, emptyLabel }: { groups: OrderGroup[]; emptyLabel: 
               <td className="px-5 py-3.5 text-right font-medium text-zinc-900">
                 {g.totalUnits.toLocaleString()}
               </td>
+              <td className="px-5 py-3.5 text-right font-medium text-zinc-900 hidden sm:table-cell">
+                {g.totalValue > 0 ? `$${Math.round(g.totalValue).toLocaleString("en-CA")}` : <span className="text-zinc-300 font-normal">—</span>}
+              </td>
               <td className="px-5 py-3.5 text-right text-zinc-400 hidden sm:table-cell">
                 {formatDate(g.shipDate)}
               </td>
@@ -171,7 +179,7 @@ export default async function OrdersPage() {
     .from("sheet_retailers")
     .select(
       "id, alloc_qty, status, requested_ship_date, retailer_id, retailer_name, sheet_id, " +
-        "retailers(id, name), deals(product_name, lp_name), sheets(id, name, ship_date)"
+        "retailers(id, name), deals(product_name, lp_name, sale_price, list_price), sheets(id, name, ship_date)"
     )
     .not("deal_id", "is", null)
     .order("requested_ship_date", { ascending: true, nullsFirst: false })

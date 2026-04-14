@@ -41,6 +41,11 @@ export default function OrderReview({
   const respondedAt = orderLines[0]?.responded_at
 
   const totalUnits = orderLines.reduce((sum, l) => sum + l.alloc_qty, 0)
+  const totalValue = orderLines.reduce((sum, l) => {
+    const d = l.deals as any
+    const price = d?.sale_price ?? d?.list_price ?? 0
+    return sum + l.alloc_qty * Number(price)
+  }, 0)
 
   async function accept() {
     setActing("accept"); setError(null)
@@ -211,6 +216,7 @@ export default function OrderReview({
             <h2 className="text-sm font-medium text-zinc-700">Order lines</h2>
             <p className="text-xs text-zinc-400 mt-0.5">
               {orderLines.length} product{orderLines.length !== 1 ? "s" : ""} · {totalUnits} total units
+              {totalValue > 0 && <span className="ml-2 font-semibold text-zinc-700">${Math.round(totalValue).toLocaleString("en-CA")}</span>}
               {status === "pending" && <span className="ml-2 text-zinc-300">· Click qty to adjust</span>}
             </p>
           </div>
