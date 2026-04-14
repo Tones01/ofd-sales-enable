@@ -65,6 +65,7 @@ function parseCSV(text: string): Record<string, string>[] {
 
 export default function NewDealPage() {
   const [tab, setTab] = useState<"manual" | "csv">("manual")
+  const [csvMode, setCsvMode] = useState<"insert" | "update">("insert")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
@@ -133,27 +134,41 @@ export default function NewDealPage() {
     const deals: any[] = []
     const errs: { row: number; error: string }[] = []
 
+    // Helper: pick first non-empty value from a list of column name synonyms
+    function col(row: Record<string, string>, ...keys: string[]): string {
+      return keys.map(k => row[k]).find(v => v && v.trim() !== "") ?? ""
+    }
+
     rows.forEach((row, i) => {
       const rowNum = i + 2
-      if (!row["lp_name"] && !row["licensed_producer"]) { errs.push({ row: rowNum, error: "lp_name is required" }); return }
+      if (!col(row, "lp_name", "licensed_producer")) { errs.push({ row: rowNum, error: "lp_name is required" }); return }
       if (!row["product_name"]) { errs.push({ row: rowNum, error: "product_name is required" }); return }
       if (!row["sku"]) { errs.push({ row: rowNum, error: "sku is required" }); return }
-      const rawQty = row["qty_available"] || row["qty_total"] || row["case_qty"] || ""
+
+      const rawQty = col(row, "qty_available", "qty_total", "case_qty")
       const qty = parseInt(rawQty, 10)
-      if (isNaN(qty) || qty <= 0) { errs.push({ row: rowNum, error: `Invalid qty_available: "${rawQty}"` }); return }
+
+      // In update mode qty is optional (you might only want to fix prices)
+      if (csvMode === "insert" && (isNaN(qty) || qty <= 0)) {
+        errs.push({ row: rowNum, error: `Invalid qty_available: "${rawQty}"` }); return
+      }
+
+      const rawListPrice  = col(row, "regular_price", "list_price", "price", "retail_price", "msrp")
+      const rawSalePrice  = col(row, "sale_price", "promo_price", "discount_price")
+
       deals.push({
-        lp_name:            row["lp_name"] || row["licensed_producer"],
+        lp_name:            col(row, "lp_name", "licensed_producer"),
         brand:              row["brand"] || null,
         product_name:       row["product_name"],
         format:             row["format"] || null,
         sku:                row["sku"],
-        qty_total:          qty,
+        qty_total:          isNaN(qty) ? undefined : qty,
         units_per_case:     row["units_per_case"] ? parseInt(row["units_per_case"], 10) : null,
-        list_price:         row["regular_price"] ? parseFloat(row["regular_price"]) : null,
-        sale_price:         row["sale_price"] ? parseFloat(row["sale_price"]) : null,
+        list_price:         rawListPrice  ? parseFloat(rawListPrice)  : null,
+        sale_price:         rawSalePrice  ? parseFloat(rawSalePrice)  : null,
         thc:                row["thc"] || null,
         minor_cannabinoids: row["minor_cannabinoids"] || null,
-        deal_expiry:        row["expiry_date"] || row["deal_expiry"] || null,
+        deal_expiry:        col(row, "expiry_date", "deal_expiry") || null,
         credit_description: row["credit_description"] || null,
         notes:              row["notes"] || null,
         status:             row["status"] === "closed" ? "closed" : "active",
@@ -163,15 +178,44 @@ export default function NewDealPage() {
     if (errs.length > 0) { setCsvErrors(errs); setLoading(false); return }
 
     const supabase = createClient()
-    const CHUNK = 50
-    let inserted = 0
-    for (let i = 0; i < deals.length; i += CHUNK) {
-      const { error } = await supabase.from("deals").insert(deals.slice(i, i + CHUNK))
-      if (error) { setError(error.message); setLoading(false); return }
-      inserted += Math.min(CHUNK, deals.length - i)
+
+    if (csvMode === "update") {
+      // Update existing deals by SKU — only set fields that are present in the CSV
+      let updated = 0
+      let notFound: string[] = []
+      for (const deal of deals) {
+        const patch: Record<string, any> = {}
+        if (deal.list_price  != null) patch.list_price  = deal.list_price
+        if (deal.sale_price  != null) patch.sale_price  = deal.sale_price
+        if (deal.qty_total   != null) patch.qty_total   = deal.qty_total
+        if (deal.units_per_case != null) patch.units_per_case = deal.units_per_case
+        if (deal.thc)         patch.thc         = deal.thc
+        if (deal.format)      patch.format      = deal.format
+        if (deal.brand)       patch.brand       = deal.brand
+        if (deal.deal_expiry) patch.deal_expiry = deal.deal_expiry
+        if (deal.credit_description) patch.credit_description = deal.credit_description
+        if (deal.notes)       patch.notes       = deal.notes
+        if (Object.keys(patch).length === 0) continue
+
+        const { data, error } = await supabase
+          .from("deals").update(patch).eq("sku", deal.sku).select("id")
+        if (error) { setError(error.message); setLoading(false); return }
+        if (!data?.length) notFound.push(deal.sku)
+        else updated++
+      }
+      const msg = `${updated} deal${updated !== 1 ? "s" : ""} updated.${notFound.length ? ` SKUs not found: ${notFound.join(", ")}` : ""}`
+      setSuccess(msg)
+    } else {
+      const CHUNK = 50
+      let inserted = 0
+      for (let i = 0; i < deals.length; i += CHUNK) {
+        const { error } = await supabase.from("deals").insert(deals.slice(i, i + CHUNK))
+        if (error) { setError(error.message); setLoading(false); return }
+        inserted += Math.min(CHUNK, deals.length - i)
+      }
+      setSuccess(`${inserted} deal${inserted !== 1 ? "s" : ""} imported successfully.`)
     }
 
-    setSuccess(`${inserted} deal${inserted !== 1 ? "s" : ""} imported successfully.`)
     setLoading(false)
     setCsvText("")
     setCsvPreview([])
@@ -280,6 +324,31 @@ export default function NewDealPage() {
         </form>
       ) : (
         <form onSubmit={handleCsvSubmit} className="space-y-6">
+
+          {/* Mode toggle */}
+          <div className="flex gap-1 bg-zinc-100 p-1 rounded-lg w-fit">
+            {([["insert", "Import new deals"], ["update", "Update existing by SKU"]] as const).map(([mode, label]) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => setCsvMode(mode)}
+                className={`px-4 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                  csvMode === mode ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-500 hover:text-zinc-700"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {csvMode === "update" && (
+            <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 text-xs text-blue-700">
+              <strong>Update mode:</strong> matches rows by SKU and patches only the columns present in your CSV.
+              Use this to fix prices, quantities, or any field without creating duplicates.
+              Columns not in your CSV are left untouched.
+            </div>
+          )}
+
           <div className="bg-zinc-50 border border-zinc-100 rounded-xl p-4 text-sm text-zinc-500">
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
@@ -288,7 +357,10 @@ export default function NewDealPage() {
                   lp_name, product_name, sku, qty_available
                 </code>
                 <p className="mt-2 text-xs">
-                  Optional: <code>brand</code>, <code>format</code>, <code>units_per_case</code>, <code>regular_price</code>, <code>sale_price</code>, <code>thc</code>, <code>minor_cannabinoids</code>, <code>expiry_date</code>, <code>credit_description</code>, <code>notes</code>
+                  Optional: <code>brand</code>, <code>format</code>, <code>units_per_case</code>, <code>thc</code>, <code>minor_cannabinoids</code>, <code>expiry_date</code>, <code>credit_description</code>, <code>notes</code>
+                </p>
+                <p className="mt-1 text-xs">
+                  Price columns (any name works): <code>regular_price</code> / <code>list_price</code> / <code>price</code> / <code>msrp</code> &nbsp;·&nbsp; <code>sale_price</code> / <code>promo_price</code>
                 </p>
               </div>
               <button
