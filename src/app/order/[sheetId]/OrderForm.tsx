@@ -135,6 +135,11 @@ export default function OrderForm({ sheet, sheetDeals }: {
                     <p className="font-medium text-zinc-900">{d?.product_name}</p>
                     <p className="text-xs text-zinc-400 mt-0.5">{d?.lp_name}{d?.brand ? ` · ${d.brand}` : ""}</p>
                     {d?.minor_cannabinoids && <p className="text-xs text-zinc-400">{d.minor_cannabinoids}</p>}
+                    {sd.visible_qty > 0 && (
+                      <p className="text-xs text-zinc-400 mt-1">
+                        <span className="font-medium text-zinc-500">{sd.visible_qty.toLocaleString()}</span> units available
+                      </p>
+                    )}
                   </td>
                   <td className="px-4 py-4 text-zinc-500 text-xs hidden sm:table-cell">
                     <p>{d?.format ?? "—"}</p>
@@ -160,6 +165,7 @@ export default function OrderForm({ sheet, sheetDeals }: {
                       const upc: number | null = d?.units_per_case ?? null
                       const qty = parseInt(qtys[sd.id] ?? "0", 10)
                       const cases = upc && qty > 0 ? qty / upc : null
+                      const overQty = qty > 0 && sd.visible_qty > 0 && qty > sd.visible_qty
                       return (
                         <div className="space-y-1">
                           <input
@@ -169,9 +175,18 @@ export default function OrderForm({ sheet, sheetDeals }: {
                             placeholder="0"
                             value={qtys[sd.id] ?? ""}
                             onChange={e => setQty(sd.id, e.target.value)}
-                            className="w-full text-right px-3 py-1.5 text-sm border border-zinc-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900 tabular-nums"
+                            className={`w-full text-right px-3 py-1.5 text-sm border rounded-lg focus:outline-none focus:ring-2 tabular-nums ${
+                              overQty
+                                ? "border-amber-300 focus:ring-amber-400"
+                                : "border-zinc-200 focus:ring-zinc-900"
+                            }`}
                           />
-                          {upc && (
+                          {overQty && (
+                            <p className="text-right text-xs text-amber-600 font-medium">
+                              ⚠ Exceeds available ({sd.visible_qty.toLocaleString()} units) — rep will review
+                            </p>
+                          )}
+                          {!overQty && upc && (
                             <p className="text-right text-xs text-zinc-400 tabular-nums">
                               {cases !== null && Number.isInteger(cases)
                                 ? <span className="text-emerald-600 font-medium">{cases} case{cases !== 1 ? "s" : ""}</span>
