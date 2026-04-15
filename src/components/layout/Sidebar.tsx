@@ -13,6 +13,7 @@ import {
   Megaphone,
   BarChart2,
   LogOut,
+  KeyRound,
 } from "lucide-react"
 import type { Role } from "@/types/database"
 
@@ -72,6 +73,17 @@ export default function Sidebar({ role, fullName }: { role: Role; fullName: stri
           <p className="text-xs font-medium text-zinc-900 truncate">{fullName}</p>
           <p className="text-xs text-zinc-400 capitalize">{role}</p>
         </div>
+        <Link
+          href="/account"
+          className={`flex items-center gap-3 w-full px-3 py-2 rounded-lg text-sm transition-colors ${
+            pathname === "/account"
+              ? "bg-zinc-900 text-white"
+              : "text-zinc-400 hover:text-zinc-900 hover:bg-zinc-50"
+          }`}
+        >
+          <KeyRound size={15} strokeWidth={pathname === "/account" ? 2 : 1.5} />
+          Account
+        </Link>
         <button
           onClick={signOut}
           className="flex items-center gap-3 w-full px-3 py-2 rounded-lg text-sm text-zinc-400 hover:text-zinc-900 hover:bg-zinc-50 transition-colors"
