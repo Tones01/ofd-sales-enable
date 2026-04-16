@@ -13,10 +13,12 @@ export default function DealsTable({ deals, isAdmin, today }: {
 }) {
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all")
+  const [showSoldOut, setShowSoldOut] = useState(false)
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim()
     return deals.filter(deal => {
+      if (!showSoldOut && deal.qty_available <= 0) return false
       if (statusFilter !== "all" && deal.status !== statusFilter) return false
       if (!q) return true
       return (
@@ -26,7 +28,7 @@ export default function DealsTable({ deals, isAdmin, today }: {
         deal.sku?.toLowerCase().includes(q)
       )
     })
-  }, [deals, search, statusFilter])
+  }, [deals, search, statusFilter, showSoldOut])
 
   return (
     <div className="bg-white border border-zinc-100 rounded-xl">
@@ -60,6 +62,15 @@ export default function DealsTable({ deals, isAdmin, today }: {
           <option value="active">Active</option>
           <option value="inactive">Inactive</option>
         </select>
+        <label className="flex items-center gap-2 text-sm text-zinc-500 whitespace-nowrap cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={showSoldOut}
+            onChange={e => setShowSoldOut(e.target.checked)}
+            className="rounded border-zinc-300"
+          />
+          Show sold out
+        </label>
         <span className="text-xs text-zinc-400 whitespace-nowrap">
           {filtered.length} of {deals.length}
         </span>
