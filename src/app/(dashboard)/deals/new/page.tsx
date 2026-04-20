@@ -45,20 +45,31 @@ function Field({ label, required, hint, children }: { label: string; required?: 
 }
 
 function parseCSV(text: string): Record<string, string>[] {
-  const lines = text.trim().split(/\r?\n/)
+  // Strip UTF-8 BOM (added by Excel on Windows)
+  const cleaned = text.trim().replace(/^\ufeff/, "")
+  const lines = cleaned.split(/\r?\n/)
   if (lines.length < 2) return []
-  const headers = lines[0].split(",").map(h => h.trim().toLowerCase().replace(/"/g, "").replace(/\s+/g, "_"))
+
+  // Auto-detect delimiter: tab (spreadsheet paste) vs comma (CSV file)
+  const delim = lines[0].includes("\t") ? "\t" : ","
+
+  const headers = lines[0].split(delim).map(h => h.trim().toLowerCase().replace(/"/g, "").replace(/\s+/g, "_"))
+
   return lines.slice(1).filter(l => l.trim()).map(line => {
     const values: string[] = []
-    let cur = "", inQ = false
-    for (const ch of line) {
-      if (ch === '"') { inQ = !inQ }
-      else if (ch === ',' && !inQ) { values.push(cur.trim()); cur = "" }
-      else cur += ch
+    if (delim === "\t") {
+      values.push(...line.split("\t"))
+    } else {
+      let cur = "", inQ = false
+      for (const ch of line) {
+        if (ch === '"') { inQ = !inQ }
+        else if (ch === ',' && !inQ) { values.push(cur.trim()); cur = "" }
+        else cur += ch
+      }
+      values.push(cur.trim())
     }
-    values.push(cur.trim())
     const row: Record<string, string> = {}
-    headers.forEach((h, i) => { row[h] = values[i]?.replace(/^"|"$/g, "") ?? "" })
+    headers.forEach((h, i) => { row[h] = values[i]?.trim().replace(/^"|"$/g, "") ?? "" })
     return row
   })
 }
@@ -145,7 +156,7 @@ export default function NewDealPage() {
       if (!row["product_name"]) { errs.push({ row: rowNum, error: "product_name is required" }); return }
       if (!row["sku"]) { errs.push({ row: rowNum, error: "sku is required" }); return }
 
-      const rawQty = col(row, "qty_available", "qty_total", "case_qty")
+      const rawQty = col(row, "qty_total", "qty_available", "case_qty")
       const qty = parseInt(rawQty, 10)
 
       // In update mode qty is optional (you might only want to fix prices)
