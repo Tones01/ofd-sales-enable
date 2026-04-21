@@ -23,6 +23,18 @@ export default function TokenOrderForm({ sheet, sheetDeals, retailerId, retailer
     setQtys(prev => ({ ...prev, [sheetDealId]: val }))
   }
 
+  function effectivePrice(d: any): number | null {
+    const p = d?.sale_price ?? d?.list_price ?? null
+    return p != null ? Number(p) : null
+  }
+
+  const subtotal = sheetDeals.reduce((sum, sd) => {
+    const qty = parseInt(qtys[sd.id] ?? "0", 10) || 0
+    const price = effectivePrice(sd.deals)
+    if (!qty || price == null) return sum
+    return sum + qty * price
+  }, 0)
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
@@ -99,12 +111,16 @@ export default function TokenOrderForm({ sheet, sheetDeals, retailerId, retailer
               <th className="text-left text-xs text-zinc-400 font-medium px-4 py-3 hidden sm:table-cell">Format / THC</th>
               <th className="text-right text-xs text-zinc-400 font-medium px-4 py-3">Price</th>
               <th className="text-right text-xs text-zinc-400 font-medium px-4 py-3 hidden sm:table-cell">Units/case</th>
-              <th className="text-right text-xs text-zinc-400 font-medium px-6 py-3 w-28">Qty</th>
+              <th className="text-right text-xs text-zinc-400 font-medium px-4 py-3 w-24">Qty</th>
+              <th className="text-right text-xs text-zinc-400 font-medium px-6 py-3 w-28">Line total</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-50">
             {sheetDeals.map(sd => {
               const d = sd.deals as any
+              const qty = parseInt(qtys[sd.id] ?? "0", 10) || 0
+              const price = effectivePrice(d)
+              const lineTotal = qty > 0 && price != null ? qty * price : null
               return (
                 <tr key={sd.id} className="hover:bg-zinc-50/40 transition-colors">
                   <td className="px-6 py-4">
@@ -131,7 +147,7 @@ export default function TokenOrderForm({ sheet, sheetDeals, retailerId, retailer
                   <td className="px-4 py-4 text-right text-zinc-500 text-xs hidden sm:table-cell">
                     {d?.units_per_case ?? "—"}
                   </td>
-                  <td className="px-6 py-4">
+                  <td className="px-4 py-4">
                     <input
                       type="number"
                       min="0"
@@ -141,11 +157,28 @@ export default function TokenOrderForm({ sheet, sheetDeals, retailerId, retailer
                       className="w-full text-right px-3 py-1.5 text-sm border border-zinc-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900 tabular-nums"
                     />
                   </td>
+                  <td className="px-6 py-4 text-right tabular-nums">
+                    {lineTotal != null
+                      ? <span className="font-medium text-zinc-900">${lineTotal.toFixed(2)}</span>
+                      : <span className="text-zinc-300">—</span>}
+                  </td>
                 </tr>
               )
             })}
           </tbody>
+          <tfoot>
+            <tr className="border-t border-zinc-100 bg-zinc-50/40">
+              <td colSpan={4} className="px-6 py-3 text-right text-sm font-medium text-zinc-700 hidden sm:table-cell">Subtotal</td>
+              <td colSpan={2} className="px-6 py-3 text-right text-sm font-medium text-zinc-700 sm:hidden">Subtotal</td>
+              <td className="px-6 py-3 text-right text-sm font-semibold text-zinc-900 tabular-nums">
+                ${subtotal.toFixed(2)}
+              </td>
+            </tr>
+          </tfoot>
         </table>
+        <p className="px-6 py-3 text-xs text-zinc-400 border-t border-zinc-50">
+          Subtotal shown before taxes. Applicable sales tax will be added on your final invoice.
+        </p>
       </div>
 
       {error && <p className="text-xs text-red-500 bg-red-50 border border-red-100 rounded-lg px-4 py-3">{error}</p>}
