@@ -95,6 +95,8 @@ export default function NewDealPage() {
   const [csvText, setCsvText] = useState("")
   const [csvPreview, setCsvPreview] = useState<Record<string, string>[]>([])
   const [csvErrors, setCsvErrors] = useState<{ row: number; error: string }[]>([])
+  const [zeroQtyItems, setZeroQtyItems] = useState<{ row: number; sku: string; product_name: string; lp_name: string }[]>([])
+  const [stagedDeals, setStagedDeals] = useState<any[] | null>(null)
 
   function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -104,6 +106,8 @@ export default function NewDealPage() {
       const text = ev.target?.result as string
       setCsvText(text)
       setCsvPreview(parseCSV(text).slice(0, 5))
+      setStagedDeals(null)
+      setZeroQtyItems([])
     }
     reader.readAsText(file)
   }
@@ -134,67 +138,16 @@ export default function NewDealPage() {
     else { window.location.href = "/deals" }
   }
 
-  async function handleCsvSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (!csvText.trim()) { setError("Please upload or paste a CSV first"); return }
+  async function doSubmit(deals: any[]) {
     setLoading(true)
     setError(null)
-    setCsvErrors([])
-
-    const rows = parseCSV(csvText)
-    const deals: any[] = []
-    const errs: { row: number; error: string }[] = []
-
-    // Helper: pick first non-empty value from a list of column name synonyms
-    function col(row: Record<string, string>, ...keys: string[]): string {
-      return keys.map(k => row[k]).find(v => v && v.trim() !== "") ?? ""
-    }
-
-    rows.forEach((row, i) => {
-      const rowNum = i + 2
-      if (!col(row, "lp_name", "licensed_producer")) { errs.push({ row: rowNum, error: "lp_name is required" }); return }
-      if (!row["product_name"]) { errs.push({ row: rowNum, error: "product_name is required" }); return }
-      if (!row["sku"]) { errs.push({ row: rowNum, error: "sku is required" }); return }
-
-      const rawQty = col(row, "qty_total", "qty_available", "case_qty")
-      const qty = parseInt(rawQty, 10)
-
-      // In update mode qty is optional (you might only want to fix prices)
-      if (csvMode === "insert" && (isNaN(qty) || qty <= 0)) {
-        errs.push({ row: rowNum, error: `Invalid qty_available: "${rawQty}"` }); return
-      }
-
-      const rawListPrice  = col(row, "regular_price", "list_price", "price", "retail_price", "msrp")
-      const rawSalePrice  = col(row, "sale_price", "promo_price", "discount_price")
-
-      deals.push({
-        lp_name:            col(row, "lp_name", "licensed_producer"),
-        brand:              row["brand"] || null,
-        product_name:       row["product_name"],
-        format:             row["format"] || null,
-        sku:                row["sku"],
-        qty_total:          isNaN(qty) ? undefined : qty,
-        units_per_case:     row["units_per_case"] ? parseInt(row["units_per_case"], 10) : null,
-        list_price:         rawListPrice  ? parseFloat(rawListPrice)  : null,
-        sale_price:         rawSalePrice  ? parseFloat(rawSalePrice)  : null,
-        thc:                row["thc"] || null,
-        minor_cannabinoids: row["minor_cannabinoids"] || null,
-        deal_expiry:        col(row, "expiry_date", "deal_expiry") || null,
-        credit_description: row["credit_description"] || null,
-        notes:              row["notes"] || null,
-        status:             row["status"] === "closed" ? "closed" : "active",
-      })
-    })
-
-    if (errs.length > 0) { setCsvErrors(errs); setLoading(false); return }
-
+    const cleanDeals = deals.map(({ _row, ...rest }) => rest)
     const supabase = createClient()
 
     if (csvMode === "update") {
-      // Update existing deals by SKU — only set fields that are present in the CSV
       let updated = 0
       let notFound: string[] = []
-      for (const deal of deals) {
+      for (const deal of cleanDeals) {
         const patch: Record<string, any> = {}
         if (deal.list_price  != null) patch.list_price  = deal.list_price
         if (deal.sale_price  != null) patch.sale_price  = deal.sale_price
@@ -219,10 +172,10 @@ export default function NewDealPage() {
     } else {
       const CHUNK = 50
       let inserted = 0
-      for (let i = 0; i < deals.length; i += CHUNK) {
-        const { error } = await supabase.from("deals").insert(deals.slice(i, i + CHUNK))
+      for (let i = 0; i < cleanDeals.length; i += CHUNK) {
+        const { error } = await supabase.from("deals").insert(cleanDeals.slice(i, i + CHUNK))
         if (error) { setError(error.message); setLoading(false); return }
-        inserted += Math.min(CHUNK, deals.length - i)
+        inserted += Math.min(CHUNK, cleanDeals.length - i)
       }
       setSuccess(`${inserted} deal${inserted !== 1 ? "s" : ""} imported successfully.`)
     }
@@ -230,6 +183,94 @@ export default function NewDealPage() {
     setLoading(false)
     setCsvText("")
     setCsvPreview([])
+    setStagedDeals(null)
+    setZeroQtyItems([])
+  }
+
+  function removeZeroQtyItem(row: number) {
+    setStagedDeals(prev => prev?.filter(d => d._row !== row) ?? null)
+    setZeroQtyItems(prev => prev.filter(item => item.row !== row))
+  }
+
+  async function handleCsvSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!csvText.trim()) { setError("Please upload or paste a CSV first"); return }
+
+    // Phase 2: user has reviewed zero-qty items, now submit staged deals
+    if (stagedDeals !== null) {
+      await doSubmit(stagedDeals)
+      return
+    }
+
+    setLoading(true)
+    setError(null)
+    setCsvErrors([])
+
+    const rows = parseCSV(csvText)
+    const deals: any[] = []
+    const errs: { row: number; error: string }[] = []
+    const zeroList: { row: number; sku: string; product_name: string; lp_name: string }[] = []
+
+    // Helper: pick first non-empty value from a list of column name synonyms
+    function col(row: Record<string, string>, ...keys: string[]): string {
+      return keys.map(k => row[k]).find(v => v && v.trim() !== "") ?? ""
+    }
+
+    rows.forEach((row, i) => {
+      const rowNum = i + 2
+      if (!col(row, "lp_name", "licensed_producer")) { errs.push({ row: rowNum, error: "lp_name is required" }); return }
+      if (!row["product_name"]) { errs.push({ row: rowNum, error: "product_name is required" }); return }
+      if (!row["sku"]) { errs.push({ row: rowNum, error: "sku is required" }); return }
+
+      const rawQty = col(row, "qty_total", "qty_available", "case_qty")
+      const qty = parseInt(rawQty, 10)
+
+      // In update mode qty is optional (you might only want to fix prices)
+      // In insert mode, reject missing/negative qty but allow 0 (shown in review panel)
+      if (csvMode === "insert" && (isNaN(qty) || qty < 0)) {
+        errs.push({ row: rowNum, error: `Invalid qty_available: "${rawQty}"` }); return
+      }
+
+      const rawListPrice  = col(row, "regular_price", "list_price", "price", "retail_price", "msrp")
+      const rawSalePrice  = col(row, "sale_price", "promo_price", "discount_price")
+
+      const deal: any = {
+        _row:               rowNum,
+        lp_name:            col(row, "lp_name", "licensed_producer"),
+        brand:              row["brand"] || null,
+        product_name:       row["product_name"],
+        format:             row["format"] || null,
+        sku:                row["sku"],
+        qty_total:          isNaN(qty) ? undefined : qty,
+        units_per_case:     row["units_per_case"] ? parseInt(row["units_per_case"], 10) : null,
+        list_price:         rawListPrice  ? parseFloat(rawListPrice)  : null,
+        sale_price:         rawSalePrice  ? parseFloat(rawSalePrice)  : null,
+        thc:                row["thc"] || null,
+        minor_cannabinoids: row["minor_cannabinoids"] || null,
+        deal_expiry:        col(row, "expiry_date", "deal_expiry") || null,
+        credit_description: row["credit_description"] || null,
+        notes:              row["notes"] || null,
+        status:             row["status"] === "closed" ? "closed" : "active",
+      }
+
+      deals.push(deal)
+
+      if (csvMode === "insert" && qty === 0) {
+        zeroList.push({ row: rowNum, sku: row["sku"], product_name: row["product_name"], lp_name: col(row, "lp_name", "licensed_producer") })
+      }
+    })
+
+    if (errs.length > 0) { setCsvErrors(errs); setLoading(false); return }
+
+    // Zero-qty items found — stage deals and show review panel instead of submitting
+    if (zeroList.length > 0) {
+      setStagedDeals(deals)
+      setZeroQtyItems(zeroList)
+      setLoading(false)
+      return
+    }
+
+    await doSubmit(deals)
   }
 
   return (
@@ -342,7 +383,7 @@ export default function NewDealPage() {
               <button
                 key={mode}
                 type="button"
-                onClick={() => setCsvMode(mode)}
+                onClick={() => { setCsvMode(mode); setStagedDeals(null); setZeroQtyItems([]) }}
                 className={`px-4 py-1.5 rounded-md text-xs font-medium transition-colors ${
                   csvMode === mode ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-500 hover:text-zinc-700"
                 }`}
@@ -400,7 +441,7 @@ export default function NewDealPage() {
               className={`${input} resize-none font-mono text-xs`}
               rows={6}
               value={csvText}
-              onChange={e => { setCsvText(e.target.value); setCsvPreview(parseCSV(e.target.value).slice(0, 5)) }}
+              onChange={e => { setCsvText(e.target.value); setCsvPreview(parseCSV(e.target.value).slice(0, 5)); setStagedDeals(null); setZeroQtyItems([]) }}
               placeholder={"lp_name,brand,product_name,format,sku,qty_available,units_per_case,regular_price,sale_price,thc,minor_cannabinoids,expiry_date\nAuxly Cannabis,Kolab Project,Kolab Indica,28g Flower,AUX-KLP-28-IND,240,12,19.99,14.99,22%,CBD 0.5%,2026-12-31"}
             />
           </Field>
@@ -431,6 +472,32 @@ export default function NewDealPage() {
             </div>
           )}
 
+          {zeroQtyItems.length > 0 && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+              <p className="text-xs font-medium text-amber-700 mb-3">
+                {zeroQtyItems.length} item{zeroQtyItems.length !== 1 ? "s have" : " has"} 0 quantity — remove any you don&apos;t want to import:
+              </p>
+              <div className="space-y-2">
+                {zeroQtyItems.map(item => (
+                  <div key={item.row} className="flex items-center justify-between bg-white border border-amber-100 rounded-lg px-3 py-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-medium text-zinc-800 truncate">{item.product_name}</p>
+                      <p className="text-xs text-zinc-400">{item.lp_name} · {item.sku}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeZeroQtyItem(item.row)}
+                      className="ml-3 flex-shrink-0 text-xs text-red-500 hover:text-red-700 font-medium transition-colors"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-amber-600 mt-3">Items not removed will be imported with 0 quantity.</p>
+            </div>
+          )}
+
           {csvErrors.length > 0 && (
             <div className="bg-red-50 border border-red-100 rounded-xl p-4 space-y-1">
               <p className="text-xs font-medium text-red-600 mb-2">Fix these errors before importing:</p>
@@ -444,7 +511,7 @@ export default function NewDealPage() {
 
           <div className="flex gap-3 pt-2">
             <button type="submit" disabled={loading || !csvText.trim()} className="bg-zinc-900 text-white text-sm font-medium px-5 py-2.5 rounded-lg hover:bg-zinc-800 disabled:opacity-50 transition-colors">
-              {loading ? "Importing…" : "Import deals"}
+              {loading ? "Importing…" : stagedDeals !== null ? "Confirm import" : "Import deals"}
             </button>
             <Link href="/deals" className="text-sm text-zinc-500 px-5 py-2.5 rounded-lg hover:bg-zinc-100 transition-colors">Cancel</Link>
           </div>
