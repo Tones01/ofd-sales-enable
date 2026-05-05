@@ -15,8 +15,19 @@ export default function EditableQty({ dealId, value }: { dealId: string; value: 
     if (num === current) { setEditing(false); return }
     setSaving(true)
     const supabase = createClient()
-    const { error } = await supabase.from("deals").update({ qty_total: num }).eq("id", dealId)
-    if (!error) setCurrent(num)
+
+    if (num === 0) {
+      // Quantity of 0 means remove the deal. Try a hard delete first; fall
+      // back to closing it if FK references prevent deletion.
+      const { error: deleteError } = await supabase.from("deals").delete().eq("id", dealId)
+      if (deleteError) {
+        await supabase.from("deals").update({ status: "closed" }).eq("id", dealId)
+      }
+    } else {
+      const { error } = await supabase.from("deals").update({ qty_total: num }).eq("id", dealId)
+      if (!error) setCurrent(num)
+    }
+
     setSaving(false)
     setEditing(false)
     // Trigger a soft reload so qty_available recalculates
@@ -27,7 +38,7 @@ export default function EditableQty({ dealId, value }: { dealId: string; value: 
     return (
       <input
         type="number"
-        min="1"
+        min="0"
         value={qty}
         onChange={e => setQty(e.target.value)}
         onBlur={save}

@@ -159,9 +159,13 @@ export default function NewDealPage() {
       const rawQty = col(row, "qty_total", "qty_available", "case_qty")
       const qty = parseInt(rawQty, 10)
 
-      // In update mode qty is optional (you might only want to fix prices)
+      // In update mode qty is optional (you might only want to fix prices),
+      // and qty of 0 is allowed because it removes the deal.
       if (csvMode === "insert" && (isNaN(qty) || qty <= 0)) {
-        errs.push({ row: rowNum, error: `Invalid qty_available: "${rawQty}"` }); return
+        const hint = rawQty.trim() === "0"
+          ? ` — to remove a product, switch to "Update existing by SKU" mode and set qty_available to 0.`
+          : ""
+        errs.push({ row: rowNum, error: `Invalid qty_available: "${rawQty}"${hint}` }); return
       }
 
       const rawListPrice  = col(row, "regular_price", "list_price", "price", "retail_price", "msrp")
@@ -193,8 +197,28 @@ export default function NewDealPage() {
     if (csvMode === "update") {
       // Update existing deals by SKU — only set fields that are present in the CSV
       let updated = 0
+      let removed = 0
+      let closed = 0
       let notFound: string[] = []
       for (const deal of deals) {
+        // qty_total <= 0 means remove the deal. Try a hard delete first; fall
+        // back to closing it if FK references prevent deletion.
+        if (deal.qty_total != null && deal.qty_total <= 0) {
+          const { data: existing } = await supabase
+            .from("deals").select("id").eq("sku", deal.sku).maybeSingle()
+          if (!existing) { notFound.push(deal.sku); continue }
+
+          const { error: deleteError } = await supabase
+            .from("deals").delete().eq("id", existing.id)
+          if (!deleteError) { removed++; continue }
+
+          const { error: closeError } = await supabase
+            .from("deals").update({ status: "closed" }).eq("id", existing.id)
+          if (closeError) { setError(closeError.message); setLoading(false); return }
+          closed++
+          continue
+        }
+
         const patch: Record<string, any> = {}
         if (deal.list_price  != null) patch.list_price  = deal.list_price
         if (deal.sale_price  != null) patch.sale_price  = deal.sale_price
@@ -214,7 +238,12 @@ export default function NewDealPage() {
         if (!data?.length) notFound.push(deal.sku)
         else updated++
       }
-      const msg = `${updated} deal${updated !== 1 ? "s" : ""} updated.${notFound.length ? ` SKUs not found: ${notFound.join(", ")}` : ""}`
+      const parts: string[] = []
+      if (updated) parts.push(`${updated} updated`)
+      if (removed) parts.push(`${removed} removed`)
+      if (closed)  parts.push(`${closed} closed (had references)`)
+      const summary = parts.length ? parts.join(", ") : "no changes"
+      const msg = `${summary}.${notFound.length ? ` SKUs not found: ${notFound.join(", ")}` : ""}`
       setSuccess(msg)
     } else {
       const CHUNK = 50
@@ -356,7 +385,7 @@ export default function NewDealPage() {
             <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 text-xs text-blue-700">
               <strong>Update mode:</strong> matches rows by SKU and patches only the columns present in your CSV.
               Use this to fix prices, quantities, or any field without creating duplicates.
-              Columns not in your CSV are left untouched.
+              Columns not in your CSV are left untouched. Setting <code>qty_available</code> to <code>0</code> removes the deal.
             </div>
           )}
 

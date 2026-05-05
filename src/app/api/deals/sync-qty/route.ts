@@ -51,14 +51,16 @@ export async function POST(req: NextRequest) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
-  const results: { sku: string; status: "updated" | "not_found" | "error"; message?: string }[] = []
+  const results: { sku: string; status: "updated" | "removed" | "closed" | "not_found" | "error"; message?: string }[] = []
 
   for (const { sku, qty_total } of updates) {
+    const trimmedSku = sku.trim()
+
     // Check if a deal with this SKU exists
     const { data: existing } = await supabase
       .from("deals")
       .select("id, qty_total")
-      .eq("sku", sku.trim())
+      .eq("sku", trimmedSku)
       .single()
 
     if (!existing) {
@@ -66,10 +68,38 @@ export async function POST(req: NextRequest) {
       continue
     }
 
+    // Quantity of 0 means the product should be removed.
+    // Attempt a hard delete; if FK references prevent it (e.g. the deal is
+    // already attached to sheets), fall back to closing the deal so it
+    // disappears from active listings.
+    if (qty_total === 0) {
+      const { error: deleteError } = await supabase
+        .from("deals")
+        .delete()
+        .eq("id", existing.id)
+
+      if (!deleteError) {
+        results.push({ sku, status: "removed" })
+        continue
+      }
+
+      const { error: closeError } = await supabase
+        .from("deals")
+        .update({ status: "closed", updated_at: new Date().toISOString() })
+        .eq("id", existing.id)
+
+      if (closeError) {
+        results.push({ sku, status: "error", message: closeError.message })
+      } else {
+        results.push({ sku, status: "closed" })
+      }
+      continue
+    }
+
     const { error } = await supabase
       .from("deals")
       .update({ qty_total, updated_at: new Date().toISOString() })
-      .eq("sku", sku.trim())
+      .eq("id", existing.id)
 
     if (error) {
       results.push({ sku, status: "error", message: error.message })
@@ -79,12 +109,16 @@ export async function POST(req: NextRequest) {
   }
 
   const updated   = results.filter(r => r.status === "updated").length
+  const removed   = results.filter(r => r.status === "removed").length
+  const closed    = results.filter(r => r.status === "closed").length
   const not_found = results.filter(r => r.status === "not_found").map(r => r.sku)
   const errors    = results.filter(r => r.status === "error")
 
   return NextResponse.json({
     ok: errors.length === 0,
     updated,
+    removed,
+    closed,
     not_found,
     errors: errors.length ? errors : undefined,
     results,
