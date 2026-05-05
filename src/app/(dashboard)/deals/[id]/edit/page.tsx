@@ -77,13 +77,28 @@ export default function EditDealPage() {
     setSaving(true)
     setError(null)
     const supabase = createClient()
+    const qty = parseInt(form.qty_available, 10)
+
+    // Quantity of 0 means remove the deal. Try a hard delete first; fall
+    // back to closing it if FK references prevent deletion.
+    if (qty === 0) {
+      const { error: deleteError } = await supabase.from("deals").delete().eq("id", id)
+      if (!deleteError) { window.location.href = "/deals"; return }
+
+      const { error: closeError } = await supabase
+        .from("deals").update({ status: "closed" }).eq("id", id)
+      if (closeError) { setError(closeError.message); setSaving(false); return }
+      window.location.href = "/deals"
+      return
+    }
+
     const { error } = await supabase.from("deals").update({
       lp_name:            form.lp_name,
       brand:              form.brand || null,
       product_name:       form.product_name,
       format:             form.format || null,
       sku:                form.sku,
-      qty_total:          parseInt(form.qty_available, 10),
+      qty_total:          qty,
       units_per_case:     form.units_per_case ? parseInt(form.units_per_case, 10) : null,
       list_price:         form.regular_price ? parseFloat(form.regular_price) : null,
       sale_price:         form.sale_price ? parseFloat(form.sale_price) : null,
@@ -148,8 +163,8 @@ export default function EditDealPage() {
         </div>
 
         <div className="grid grid-cols-2 gap-4">
-          <Field label="Qty available" required hint="Total units in this deal">
-            <input className={input} type="number" min="1" value={form.qty_available} onChange={e => set("qty_available", e.target.value)} required />
+          <Field label="Qty available" required hint="Total units in this deal — set to 0 to remove this deal">
+            <input className={input} type="number" min="0" value={form.qty_available} onChange={e => set("qty_available", e.target.value)} required />
           </Field>
           <Field label="Units per case" hint="Pack size — how many units in one case">
             <input className={input} type="number" min="1" value={form.units_per_case} onChange={e => set("units_per_case", e.target.value)} placeholder="e.g. 12" />
