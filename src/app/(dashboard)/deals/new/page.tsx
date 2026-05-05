@@ -201,9 +201,9 @@ export default function NewDealPage() {
       let closed = 0
       let notFound: string[] = []
       for (const deal of deals) {
-        // qty_total of 0 means remove the deal. Try a hard delete first; fall
+        // qty_total <= 0 means remove the deal. Try a hard delete first; fall
         // back to closing it if FK references prevent deletion.
-        if (deal.qty_total === 0) {
+        if (deal.qty_total != null && deal.qty_total <= 0) {
           const { data: existing } = await supabase
             .from("deals").select("id").eq("sku", deal.sku).maybeSingle()
           if (!existing) { notFound.push(deal.sku); continue }
