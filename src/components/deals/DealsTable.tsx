@@ -1,37 +1,99 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useEffect, useState, useTransition } from "react"
 import Link from "next/link"
-import { Pencil, Search, X } from "lucide-react"
+import { usePathname, useRouter } from "next/navigation"
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, Pencil, Search, X } from "lucide-react"
 import EditableQty from "@/components/deals/EditableQty"
 import EditablePrice from "@/components/deals/EditablePrice"
 
-export default function DealsTable({ deals, isAdmin, today }: {
+export const PAGE_SIZE = 50
+
+export const SORTABLE_COLUMNS = [
+  "product_name",
+  "list_price",
+  "sale_price",
+  "qty_total",
+  "qty_reserved",
+  "qty_accepted",
+  "qty_available",
+  "deal_expiry",
+  "created_at",
+] as const
+
+export type SortKey = (typeof SORTABLE_COLUMNS)[number]
+
+export type DealsQuery = {
+  q: string
+  status: "all" | "active" | "closed"
+  showSoldOut: boolean
+  sort: SortKey
+  dir: "asc" | "desc"
+  page: number
+}
+
+type Props = {
   deals: any[]
+  total: number
+  query: DealsQuery
   isAdmin: boolean
   today: string
-}) {
-  const [search, setSearch] = useState("")
-  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all")
-  const [showSoldOut, setShowSoldOut] = useState(false)
+}
 
-  const filtered = useMemo(() => {
-    const q = search.toLowerCase().trim()
-    return deals.filter(deal => {
-      if (!showSoldOut && deal.qty_available <= 0) return false
-      if (statusFilter !== "all" && deal.status !== statusFilter) return false
-      if (!q) return true
-      return (
-        deal.product_name?.toLowerCase().includes(q) ||
-        deal.lp_name?.toLowerCase().includes(q) ||
-        deal.brand?.toLowerCase().includes(q) ||
-        deal.sku?.toLowerCase().includes(q)
-      )
+function buildSearch(query: DealsQuery) {
+  const sp = new URLSearchParams()
+  if (query.q) sp.set("q", query.q)
+  if (query.status !== "all") sp.set("status", query.status)
+  if (query.showSoldOut) sp.set("sold_out", "1")
+  if (query.sort !== "created_at") sp.set("sort", query.sort)
+  if (query.dir !== "desc") sp.set("dir", query.dir)
+  if (query.page > 1) sp.set("page", String(query.page))
+  const s = sp.toString()
+  return s ? `?${s}` : ""
+}
+
+export default function DealsTable({ deals, total, query, isAdmin, today }: Props) {
+  const router = useRouter()
+  const pathname = usePathname()
+  const [isPending, startTransition] = useTransition()
+  const [searchInput, setSearchInput] = useState(query.q)
+
+  // Reflect server-side `q` if the user navigates via back/forward.
+  useEffect(() => { setSearchInput(query.q) }, [query.q])
+
+  // Debounce search input → URL.
+  useEffect(() => {
+    if (searchInput === query.q) return
+    const t = setTimeout(() => {
+      update({ q: searchInput, page: 1 })
+    }, 250)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchInput])
+
+  function update(patch: Partial<DealsQuery>) {
+    const next = { ...query, ...patch }
+    startTransition(() => {
+      router.replace(`${pathname}${buildSearch(next)}`, { scroll: false })
     })
-  }, [deals, search, statusFilter, showSoldOut])
+  }
+
+  function toggleSort(col: SortKey) {
+    if (query.sort === col) {
+      update({ dir: query.dir === "asc" ? "desc" : "asc", page: 1 })
+    } else {
+      // Sensible defaults: text asc, numeric/date desc.
+      const desc = col !== "product_name"
+      update({ sort: col, dir: desc ? "desc" : "asc", page: 1 })
+    }
+  }
+
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  const from = total === 0 ? 0 : (query.page - 1) * PAGE_SIZE + 1
+  const to = Math.min(total, query.page * PAGE_SIZE)
 
   return (
-    <div className="bg-white border border-zinc-100 rounded-xl">
+    <div className={`bg-white border border-zinc-100 rounded-xl ${isPending ? "opacity-70" : ""} transition-opacity`}>
 
       {/* Search + filter bar */}
       <div className="px-4 py-3 border-b border-zinc-100 flex items-center gap-3 flex-wrap">
@@ -39,40 +101,41 @@ export default function DealsTable({ deals, isAdmin, today }: {
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" />
           <input
             type="text"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
+            value={searchInput}
+            onChange={e => setSearchInput(e.target.value)}
             placeholder="Search product, LP, brand, SKU…"
             className="w-full pl-9 pr-8 py-2 text-sm bg-zinc-50 border border-zinc-200 rounded-lg text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent transition"
           />
-          {search && (
+          {searchInput && (
             <button
-              onClick={() => setSearch("")}
+              onClick={() => setSearchInput("")}
               className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600"
+              aria-label="Clear search"
             >
               <X size={13} />
             </button>
           )}
         </div>
         <select
-          value={statusFilter}
-          onChange={e => setStatusFilter(e.target.value as "all" | "active" | "inactive")}
+          value={query.status}
+          onChange={e => update({ status: e.target.value as DealsQuery["status"], page: 1 })}
           className="text-sm bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 text-zinc-700 focus:outline-none focus:ring-2 focus:ring-zinc-900 transition"
         >
           <option value="all">All statuses</option>
           <option value="active">Active</option>
-          <option value="inactive">Inactive</option>
+          <option value="closed">Closed</option>
         </select>
         <label className="flex items-center gap-2 text-sm text-zinc-500 whitespace-nowrap cursor-pointer select-none">
           <input
             type="checkbox"
-            checked={showSoldOut}
-            onChange={e => setShowSoldOut(e.target.checked)}
+            checked={query.showSoldOut}
+            onChange={e => update({ showSoldOut: e.target.checked, page: 1 })}
             className="rounded border-zinc-300"
           />
           Show sold out
         </label>
         <span className="text-xs text-zinc-400 whitespace-nowrap">
-          {filtered.length} of {deals.length}
+          {total === 0 ? "0 results" : `${from}–${to} of ${total}`}
         </span>
       </div>
 
@@ -81,35 +144,29 @@ export default function DealsTable({ deals, isAdmin, today }: {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-zinc-100 bg-zinc-50/50">
-              <th className="text-left text-xs text-zinc-400 font-medium px-5 py-3.5 whitespace-nowrap">Product</th>
+              <SortHeader label="Product" col="product_name" align="left" query={query} onClick={toggleSort} />
               <th className="text-left text-xs text-zinc-400 font-medium px-5 py-3.5 whitespace-nowrap">Format</th>
               <th className="text-left text-xs text-zinc-400 font-medium px-5 py-3.5 whitespace-nowrap">THC</th>
-              <th className="text-right text-xs text-zinc-400 font-medium px-5 py-3.5 whitespace-nowrap">Reg. $</th>
-              <th className="text-right text-xs text-zinc-400 font-medium px-5 py-3.5 whitespace-nowrap">Sale $</th>
+              <SortHeader label="Reg. $" col="list_price" align="right" query={query} onClick={toggleSort} />
+              <SortHeader label="Sale $" col="sale_price" align="right" query={query} onClick={toggleSort} />
               <th className="text-right text-xs text-zinc-400 font-medium px-5 py-3.5 whitespace-nowrap">
                 <span title="Number of units per case (pack size)">Units/case</span>
               </th>
-              <th className="text-right text-xs text-zinc-400 font-medium px-5 py-3.5 whitespace-nowrap">
-                <span title="Total units in this deal">Total units</span>
-              </th>
-              <th className="text-right text-xs text-zinc-400 font-medium px-5 py-3.5 whitespace-nowrap">
-                <span title="Units currently on active sheets (pending retailer response)">On sheets</span>
-              </th>
-              <th className="text-right text-xs text-zinc-400 font-medium px-5 py-3.5 whitespace-nowrap">
-                <span title="Units accepted by retailers">Accepted</span>
-              </th>
-              <th className="text-right text-xs text-zinc-400 font-medium px-5 py-3.5 whitespace-nowrap">
-                <span title="Units not yet allocated to any sheet">Available</span>
-              </th>
-              <th className="text-center text-xs text-zinc-400 font-medium px-5 py-3.5 whitespace-nowrap">Expiry</th>
+              <SortHeader label="Total units" col="qty_total" align="right" query={query} onClick={toggleSort} hint="Total units in this deal" />
+              <SortHeader label="On sheets" col="qty_reserved" align="right" query={query} onClick={toggleSort} hint="Units currently on active sheets (pending retailer response)" />
+              <SortHeader label="Accepted" col="qty_accepted" align="right" query={query} onClick={toggleSort} hint="Units accepted by retailers" />
+              <SortHeader label="Available" col="qty_available" align="right" query={query} onClick={toggleSort} hint="Units not yet allocated to any sheet" />
+              <SortHeader label="Expiry" col="deal_expiry" align="center" query={query} onClick={toggleSort} />
               <th className="text-center text-xs text-zinc-400 font-medium px-5 py-3.5 whitespace-nowrap">Status</th>
               {isAdmin && <th className="px-5 py-3.5" />}
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-50">
-            {filtered.map(deal => {
+            {deals.map(deal => {
               const expiry = deal.deal_expiry as string | null
               const isExpired = expiry != null && expiry < today && deal.status === "active"
+              const safeTotal = Number(deal.qty_total) || 0
+              const lowThreshold = safeTotal * 0.15
               return (
                 <tr key={deal.id} className={`transition-colors group ${isExpired ? "bg-red-50/40 hover:bg-red-50/60" : "hover:bg-zinc-50/60"}`}>
                   <td className="px-5 py-4 min-w-[200px]">
@@ -153,7 +210,7 @@ export default function DealsTable({ deals, isAdmin, today }: {
                     <span className={`font-semibold ${
                       deal.qty_available <= 0
                         ? "text-red-500"
-                        : deal.qty_available < deal.qty_total * 0.15
+                        : safeTotal > 0 && deal.qty_available < lowThreshold
                         ? "text-amber-500"
                         : "text-emerald-600"
                     }`}>
@@ -176,7 +233,7 @@ export default function DealsTable({ deals, isAdmin, today }: {
                     <td className="px-4 py-4 text-right whitespace-nowrap">
                       <Link
                         href={`/deals/${deal.id}/edit`}
-                        className="inline-flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-900 opacity-0 group-hover:opacity-100 transition-all px-2.5 py-1.5 rounded-md hover:bg-zinc-100"
+                        className="inline-flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-900 px-2.5 py-1.5 rounded-md hover:bg-zinc-100 focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-zinc-900"
                       >
                         <Pencil size={12} />
                         Edit
@@ -189,12 +246,14 @@ export default function DealsTable({ deals, isAdmin, today }: {
           </tbody>
         </table>
 
-        {filtered.length === 0 && (
+        {deals.length === 0 && (
           <div className="text-center py-16">
             <p className="text-sm text-zinc-400">
-              {deals.length === 0 ? "No deals yet." : "No deals match your search."}
+              {total === 0 && !query.q && query.status === "all"
+                ? "No deals yet."
+                : "No deals match your filters."}
             </p>
-            {deals.length === 0 && isAdmin && (
+            {total === 0 && isAdmin && !query.q && query.status === "all" && (
               <Link href="/deals/new" className="mt-3 inline-block text-sm text-zinc-900 underline underline-offset-2">
                 Create the first deal
               </Link>
@@ -202,6 +261,64 @@ export default function DealsTable({ deals, isAdmin, today }: {
           </div>
         )}
       </div>
+
+      {/* Pagination */}
+      {total > PAGE_SIZE && (
+        <div className="px-4 py-3 border-t border-zinc-100 flex items-center justify-between text-sm">
+          <span className="text-xs text-zinc-400">
+            Page {query.page} of {totalPages}
+          </span>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => update({ page: query.page - 1 })}
+              disabled={query.page <= 1 || isPending}
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md border border-zinc-200 text-zinc-700 hover:bg-zinc-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
+            >
+              <ChevronLeft size={14} /> Prev
+            </button>
+            <button
+              onClick={() => update({ page: query.page + 1 })}
+              disabled={query.page >= totalPages || isPending}
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md border border-zinc-200 text-zinc-700 hover:bg-zinc-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
+            >
+              Next <ChevronRight size={14} />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
+  )
+}
+
+function SortHeader({
+  label,
+  col,
+  align,
+  query,
+  onClick,
+  hint,
+}: {
+  label: string
+  col: SortKey
+  align: "left" | "right" | "center"
+  query: DealsQuery
+  onClick: (col: SortKey) => void
+  hint?: string
+}) {
+  const active = query.sort === col
+  const Icon = !active ? ArrowUpDown : query.dir === "asc" ? ArrowUp : ArrowDown
+  const justify = align === "right" ? "justify-end" : align === "center" ? "justify-center" : "justify-start"
+  return (
+    <th className={`text-${align} text-xs text-zinc-400 font-medium px-5 py-3.5 whitespace-nowrap`}>
+      <button
+        type="button"
+        onClick={() => onClick(col)}
+        title={hint}
+        className={`inline-flex items-center gap-1 ${justify} hover:text-zinc-700 transition-colors ${active ? "text-zinc-700" : ""}`}
+      >
+        {label}
+        <Icon size={11} className={active ? "" : "opacity-40"} />
+      </button>
+    </th>
   )
 }
